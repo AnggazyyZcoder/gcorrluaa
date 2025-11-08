@@ -1,5 +1,5 @@
 --//////////////////////////////////////////////////////////////////////////////////
--- Anggazyy Hub - Fish It (FINAL) + Weather Machine
+-- Anggazyy Hub - Fish It (FINAL) + Weather Machine + Trick or Treat
 -- Rayfield UI + Lucide icons
 -- Clean, modern, professional design
 -- Author: Anggazyy (refactor)
@@ -44,6 +44,10 @@ local autoSellLoop = nil
 -- Weather System Variables
 local selectedWeathers = {}
 local availableWeathers = {}
+
+-- Trick or Treat Variables
+local autoTrickTreatEnabled = false
+local trickTreatLoop = nil
 
 -- UI Configuration
 local COLOR_ENABLED = Color3.fromRGB(76, 175, 80)  -- Green
@@ -278,6 +282,157 @@ local function ToggleWeatherSelection(weatherIndex, state)
             Duration = 2
         })
     end
+end
+
+-- =============================================================================
+-- TRICK OR TREAT SYSTEM
+-- =============================================================================
+
+local function GetSpecialDialogueRemote()
+    local success, result = pcall(function()
+        local Net = require(ReplicatedStorage.Packages.Net)
+        local SpecialDialogueEvent = Net:RemoteFunction("SpecialDialogueEvent")
+        return SpecialDialogueEvent
+    end)
+    
+    if success then
+        return result
+    else
+        warn("❌ Failed to load SpecialDialogueEvent:", result)
+        return nil
+    end
+end
+
+local function FindTrickOrTreatDoors()
+    local doors = {}
+    
+    for _, door in pairs(workspace:GetDescendants()) do
+        if door:IsA("Model") and door:FindFirstChild("Root") and door:FindFirstChild("Door") and door.Name then
+            if door:GetAttribute("TrickOrTreatDoor") or string.find(door.Name, "House") then
+                table.insert(doors, door)
+            end
+        end
+    end
+    
+    return doors
+end
+
+local function KnockDoor(door)
+    local success, result = pcall(function()
+        local SpecialDialogueEvent = GetSpecialDialogueRemote()
+        if not SpecialDialogueEvent then
+            return false, "Remote not found"
+        end
+        
+        local success, reward = SpecialDialogueEvent:InvokeServer(door.Name, "TrickOrTreatHouse")
+        return success, reward
+    end)
+    
+    return success, result
+end
+
+local function StartAutoTrickTreat()
+    if autoTrickTreatEnabled then return end
+    autoTrickTreatEnabled = true
+    
+    Notify({
+        Title = "🎃 Auto Trick or Treat",
+        Content = "System activated - Knocking all doors...",
+        Duration = 3
+    })
+    
+    trickTreatLoop = task.spawn(function()
+        while autoTrickTreatEnabled do
+            local doors = FindTrickOrTreatDoors()
+            
+            if #doors > 0 then
+                Notify({
+                    Title = "🎃 Trick or Treat",
+                    Content = string.format("Found %d doors, knocking...", #doors),
+                    Duration = 2
+                })
+                
+                for _, door in ipairs(doors) do
+                    if not autoTrickTreatEnabled then break end
+                    
+                    local success, result = KnockDoor(door)
+                    if success then
+                        if result == "Trick" then
+                            print("[🎃] Trick dari " .. door.Name)
+                        elseif result == "Treat" then
+                            print("[🍬] Treat dari " .. door.Name .. " → +" .. tostring(result) .. " Candy Corns")
+                        else
+                            print("[❌] Gagal interaksi dengan " .. door.Name)
+                        end
+                    else
+                        print("[❌] Error knocking " .. door.Name .. ": " .. tostring(result))
+                    end
+                    
+                    task.wait(0.5) -- Jeda biar gak spam server
+                end
+            else
+                print("[🔍] Tidak ada Trick or Treat doors yang ditemukan")
+            end
+            
+            -- Tunggu sebelum scan ulang
+            task.wait(10)
+        end
+    end)
+end
+
+local function StopAutoTrickTreat()
+    if not autoTrickTreatEnabled then return end
+    autoTrickTreatEnabled = false
+    
+    if trickTreatLoop then
+        task.cancel(trickTreatLoop)
+        trickTreatLoop = nil
+    end
+    
+    Notify({
+        Title = "🎃 Auto Trick or Treat",
+        Content = "System deactivated",
+        Duration = 2
+    })
+end
+
+local function ManualKnockAllDoors()
+    local doors = FindTrickOrTreatDoors()
+    
+    if #doors == 0 then
+        Notify({
+            Title = "🎃 Trick or Treat",
+            Content = "No Trick or Treat doors found!",
+            Duration = 3
+        })
+        return
+    end
+    
+    Notify({
+        Title = "🎃 Manual Knock",
+        Content = string.format("Knocking %d doors...", #doors),
+        Duration = 2
+    })
+    
+    local successfulKnocks = 0
+    local totalCandy = 0
+    
+    for _, door in ipairs(doors) do
+        local success, result = KnockDoor(door)
+        if success then
+            successfulKnocks = successfulKnocks + 1
+            if result == "Treat" then
+                totalCandy = totalCandy + 1
+            end
+        end
+        task.wait(0.5)
+    end
+    
+    Notify({
+        Title = "🎃 Knock Complete",
+        Content = string.format("Success: %d/%d doors | Candy: +%d", successfulKnocks, #doors, totalCandy),
+        Duration = 4
+    })
 end
 
 -- Auto Fishing System
@@ -1048,6 +1203,34 @@ BypassTab:CreateButton({
     Callback = ManualSellAllFish
 })
 
+-- =============================================================================
+-- TRICK OR TREAT SECTION - DITAMBAHKAN DI BYPASS TAB
+-- =============================================================================
+BypassTab:CreateSection("🎃 Trick or Treat")
+
+BypassTab:CreateToggle({
+    Name = "Auto Trick or Treat",
+    CurrentValue = false,
+    Flag = "AutoTrickTreatToggle",
+    Callback = function(state)
+        if state then
+            StartAutoTrickTreat()
+        else
+            StopAutoTrickTreat()
+        end
+    end
+})
+
+BypassTab:CreateButton({
+    Name = "Knock All Doors Now",
+    Callback = ManualKnockAllDoors
+})
+
+BypassTab:CreateParagraph({
+    Title = "Trick or Treat Info",
+    Content = "Automatically knocks on all Trick or Treat doors\n🎃 = Trick | 🍬 = Treat (Candy Corns)"
+})
+
 -- Quick Actions Section
 BypassTab:CreateSection("Quick Actions")
 
@@ -1057,6 +1240,7 @@ BypassTab:CreateButton({
         StartFishingRadar()
         StartDivingGear()
         StartAutoSell()
+        StartAutoTrickTreat()
         Notify({Title = "Bypass", Content = "All bypass features enabled", Duration = 3})
     end
 })
@@ -1067,6 +1251,7 @@ BypassTab:CreateButton({
         StopFishingRadar()
         StopDivingGear()
         StopAutoSell()
+        StopAutoTrickTreat()
         Notify({Title = "Bypass", Content = "All bypass features disabled", Duration = 3})
     end
 })
@@ -1223,6 +1408,7 @@ SettingsTab:CreateButton({
         StopFishingRadar()
         StopDivingGear()
         StopAutoSell()
+        StopAutoTrickTreat()
         DestroyCoordinateDisplay()
         Rayfield:Destroy()
         Notify({Title = "Unload", Content = "Hub unloaded successfully", Duration = 2})
