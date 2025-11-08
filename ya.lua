@@ -1,14 +1,12 @@
 --//////////////////////////////////////////////////////////////////////////////////
 -- Anggazyy Hub - Fish It (FINAL) + Weather Machine + Trick or Treat
--- Rayfield UI + Lucide icons
--- Clean, modern, professional design
+-- Lates Lib UI - Modern, Clean Design
 -- Author: Anggazyy (refactor)
 --//////////////////////////////////////////////////////////////////////////////////
 
 -- CONFIG: ubah sesuai kebutuhan
 local AUTO_FISH_REMOTE_NAME = "UpdateAutoFishingState"
 local NET_PACKAGES_FOLDER = "Packages"
-local RAYFIELD_URL = 'https://sirius.menu/rayfield'
 
 -- Services & Variables
 local Players = game:GetService("Players")
@@ -18,12 +16,12 @@ local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
 local UserGameSettings = UserSettings():GetService("UserGameSettings")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
 local autoFishEnabled = false
 local autoFishLoopThread = nil
 local coordinateGui = nil
-local statusParagraph = nil
 local currentSelectedMap = nil
 
 -- Player Configuration Variables
@@ -53,7 +51,6 @@ local trickTreatLoop = nil
 local COLOR_ENABLED = Color3.fromRGB(76, 175, 80)  -- Green
 local COLOR_DISABLED = Color3.fromRGB(244, 67, 54) -- Red
 local COLOR_PRIMARY = Color3.fromRGB(103, 58, 183) -- Purple
-local COLOR_SECONDARY = Color3.fromRGB(30, 30, 46)  -- Dark
 
 -- Auto-clean money icons
 task.spawn(function()
@@ -76,23 +73,24 @@ task.spawn(function()
     end
 end)
 
--- Rayfield Loader
-local successLoad, Rayfield = pcall(function()
-    return loadstring(game:HttpGet(RAYFIELD_URL))()
-end)
-if not successLoad or not Rayfield then
-    warn("Rayfield loading failed. Please check your executor configuration.")
-    return
-end
+-- Lates Lib Loader
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/lxte/lates-lib/main/Main.lua"))()
+local Window = Library:CreateWindow({
+	Title = "Anggazyy Hub - Fish It",
+	Theme = "Dark",
+	Size = UDim2.fromOffset(570, 450),
+	Transparency = 0.2,
+	Blurring = true,
+	MinimizeKeybind = Enum.KeyCode.RightControl,
+})
 
 -- Notification System
 local function Notify(opts)
     pcall(function()
-        Rayfield:Notify({
+        Window:Notify({
             Title = opts.Title or "Notification",
-            Content = opts.Content or "",
-            Duration = opts.Duration or 3,
-            Image = opts.Image or 4483362458
+            Description = opts.Content or "",
+            Duration = opts.Duration or 3
         })
     end)
 end
@@ -198,8 +196,7 @@ local function BuySelectedWeathers()
     if not next(selectedWeathers) then
         Notify({
             Title = "Weather Purchase",
-            Content = "No weathers selected!",
-            Duration = 3
+            Content = "No weathers selected!"
         })
         return
     end
@@ -209,8 +206,7 @@ local function BuySelectedWeathers()
     
     Notify({
         Title = "Weather Purchase",
-        Content = "Processing purchases...",
-        Duration = 2
+        Content = "Processing purchases..."
     })
     
     for weatherName, selected in pairs(selectedWeathers) do
@@ -232,14 +228,12 @@ local function BuySelectedWeathers()
                     successfulPurchases = successfulPurchases + 1
                     Notify({
                         Title = "✅ Purchase Successful",
-                        Content = string.format("Bought: %s", weatherData.Name),
-                        Duration = 3
+                        Content = string.format("Bought: %s", weatherData.Name)
                     })
                 else
                     Notify({
                         Title = "❌ Purchase Failed",
-                        Content = string.format("Failed to buy: %s", weatherData.Name),
-                        Duration = 4
+                        Content = string.format("Failed to buy: %s", weatherData.Name)
                     })
                 end
             end
@@ -254,8 +248,7 @@ local function BuySelectedWeathers()
     
     Notify({
         Title = "Purchase Complete",
-        Content = string.format("Successfully purchased %d/%d weathers", successfulPurchases, totalPurchases),
-        Duration = 4
+        Content = string.format("Successfully purchased %d/%d weathers", successfulPurchases, totalPurchases)
     })
 end
 
@@ -278,8 +271,7 @@ local function ToggleWeatherSelection(weatherIndex, state)
         
         Notify({
             Title = state and "✅ Weather Selected" or "❌ Weather Deselected",
-            Content = string.format("%s %s", weather.Name, state and "selected" or "deselected"),
-            Duration = 2
+            Content = string.format("%s %s", weather.Name, state and "selected" or "deselected")
         })
     end
 end
@@ -337,8 +329,7 @@ local function StartAutoTrickTreat()
     
     Notify({
         Title = "🎃 Auto Trick or Treat",
-        Content = "System activated - Knocking all doors...",
-        Duration = 3
+        Content = "System activated - Knocking all doors..."
     })
     
     trickTreatLoop = task.spawn(function()
@@ -348,8 +339,7 @@ local function StartAutoTrickTreat()
             if #doors > 0 then
                 Notify({
                     Title = "🎃 Trick or Treat",
-                    Content = string.format("Found %d doors, knocking...", #doors),
-                    Duration = 2
+                    Content = string.format("Found %d doors, knocking...", #doors)
                 })
                 
                 for _, door in ipairs(doors) do
@@ -391,8 +381,7 @@ local function StopAutoTrickTreat()
     
     Notify({
         Title = "🎃 Auto Trick or Treat",
-        Content = "System deactivated",
-        Duration = 2
+        Content = "System deactivated"
     })
 end
 
@@ -402,16 +391,14 @@ local function ManualKnockAllDoors()
     if #doors == 0 then
         Notify({
             Title = "🎃 Trick or Treat",
-            Content = "No Trick or Treat doors found!",
-            Duration = 3
+            Content = "No Trick or Treat doors found!"
         })
         return
     end
     
     Notify({
         Title = "🎃 Manual Knock",
-        Content = string.format("Knocking %d doors...", #doors),
-        Duration = 2
+        Content = string.format("Knocking %d doors...", #doors)
     })
     
     local successfulKnocks = 0
@@ -430,8 +417,7 @@ local function ManualKnockAllDoors()
     
     Notify({
         Title = "🎃 Knock Complete",
-        Content = string.format("Success: %d/%d doors | Candy: +%d", successfulKnocks, #doors, totalCandy),
-        Duration = 4
+        Content = string.format("Success: %d/%d doors | Candy: +%d", successfulKnocks, #doors, totalCandy)
     })
 end
 
@@ -439,12 +425,11 @@ end
 local function StartAutoFish()
     if autoFishEnabled then return end
     autoFishEnabled = true
-    if statusParagraph then 
-        pcall(function() 
-            statusParagraph:Set("Status: ACTIVE")
-        end) 
-    end
-    Notify({Title = "Auto Fishing", Content = "System activated successfully", Duration = 2})
+    
+    Notify({
+        Title = "Auto Fishing", 
+        Content = "System activated successfully"
+    })
 
     autoFishLoopThread = task.spawn(function()
         while autoFishEnabled do
@@ -459,12 +444,11 @@ end
 local function StopAutoFish()
     if not autoFishEnabled then return end
     autoFishEnabled = false
-    if statusParagraph then 
-        pcall(function() 
-            statusParagraph:Set("Status: DISABLED")
-        end) 
-    end
-    Notify({Title = "Auto Fishing", Content = "System deactivated", Duration = 2})
+    
+    Notify({
+        Title = "Auto Fishing", 
+        Content = "System deactivated"
+    })
     
     pcall(function()
         SafeInvokeAutoFishing(false)
@@ -557,7 +541,10 @@ local function EnableAntiLag()
         settings().Rendering.QualityLevel = 1
     end)
     
-    Notify({Title = "Ultra Anti Lag", Content = "White texture mode enabled - Maximum performance", Duration = 3})
+    Notify({
+        Title = "Ultra Anti Lag", 
+        Content = "White texture mode enabled - Maximum performance"
+    })
 end
 
 local function DisableAntiLag()
@@ -610,7 +597,10 @@ local function DisableAntiLag()
         settings().Rendering.QualityLevel = 10
     end)
     
-    Notify({Title = "Anti Lag", Content = "Graphics settings restored", Duration = 3})
+    Notify({
+        Title = "Anti Lag", 
+        Content = "Graphics settings restored"
+    })
 end
 
 -- Position Management System
@@ -620,8 +610,7 @@ local function SaveCurrentPosition()
         lastSavedPosition = character.HumanoidRootPart.Position
         Notify({
             Title = "Position Saved", 
-            Content = string.format("Position saved successfully"),
-            Duration = 2
+            Content = "Position saved successfully"
         })
         return true
     end
@@ -630,14 +619,20 @@ end
 
 local function LoadSavedPosition()
     if not lastSavedPosition then
-        Notify({Title = "Load Failed", Content = "No position saved", Duration = 2})
+        Notify({
+            Title = "Load Failed", 
+            Content = "No position saved"
+        })
         return false
     end
     
     local character = LocalPlayer.Character
     if character and character:FindFirstChild("HumanoidRootPart") then
         character.HumanoidRootPart.CFrame = CFrame.new(lastSavedPosition)
-        Notify({Title = "Position Loaded", Content = "Teleported to saved position", Duration = 2})
+        Notify({
+            Title = "Position Loaded", 
+            Content = "Teleported to saved position"
+        })
         return true
     end
     return false
@@ -666,7 +661,10 @@ local function StartLockPosition()
         end
     end)
     
-    Notify({Title = "Position Lock", Content = "Player position locked", Duration = 2})
+    Notify({
+        Title = "Position Lock", 
+        Content = "Player position locked"
+    })
 end
 
 local function StopLockPosition()
@@ -678,7 +676,10 @@ local function StopLockPosition()
         lockPositionLoop = nil
     end
     
-    Notify({Title = "Position Lock", Content = "Player position unlocked", Duration = 2})
+    Notify({
+        Title = "Position Lock", 
+        Content = "Player position unlocked"
+    })
 end
 
 -- =============================================================================
@@ -727,9 +728,15 @@ local function StartFishingRadar()
     local success, message = ToggleFishingRadar()
     if success then
         fishingRadarEnabled = true
-        Notify({Title = "Fishing Radar", Content = message, Duration = 3})
+        Notify({
+            Title = "Fishing Radar", 
+            Content = message
+        })
     else
-        Notify({Title = "Radar Error", Content = message, Duration = 4})
+        Notify({
+            Title = "Radar Error", 
+            Content = message
+        })
     end
 end
 
@@ -739,9 +746,15 @@ local function StopFishingRadar()
     local success, message = ToggleFishingRadar()
     if success then
         fishingRadarEnabled = false
-        Notify({Title = "Fishing Radar", Content = message, Duration = 3})
+        Notify({
+            Title = "Fishing Radar", 
+            Content = message
+        })
     else
-        Notify({Title = "Radar Error", Content = message, Duration = 4})
+        Notify({
+            Title = "Radar Error", 
+            Content = message
+        })
     end
 end
 
@@ -802,9 +815,15 @@ local function StartDivingGear()
     local success, message = ToggleDivingGear()
     if success then
         divingGearEnabled = true
-        Notify({Title = "Diving Gear", Content = message, Duration = 3})
+        Notify({
+            Title = "Diving Gear", 
+            Content = message
+        })
     else
-        Notify({Title = "Diving Gear Error", Content = message, Duration = 4})
+        Notify({
+            Title = "Diving Gear Error", 
+            Content = message
+        })
     end
 end
 
@@ -814,9 +833,15 @@ local function StopDivingGear()
     local success, message = ToggleDivingGear()
     if success then
         divingGearEnabled = false
-        Notify({Title = "Diving Gear", Content = message, Duration = 3})
+        Notify({
+            Title = "Diving Gear", 
+            Content = message
+        })
     else
-        Notify({Title = "Diving Gear Error", Content = message, Duration = 4})
+        Notify({
+            Title = "Diving Gear Error", 
+            Content = message
+        })
     end
 end
 
@@ -833,9 +858,15 @@ local function ManualSellAllFish()
     end)
     
     if success then
-        Notify({Title = "Manual Sell", Content = result, Duration = 3})
+        Notify({
+            Title = "Manual Sell", 
+            Content = result
+        })
     else
-        Notify({Title = "Sell Error", Content = result, Duration = 4})
+        Notify({
+            Title = "Sell Error", 
+            Content = result
+        })
     end
 end
 
@@ -862,8 +893,7 @@ local function StartAutoSell()
                             VendorController:SellAllItems()
                             Notify({
                                 Title = "Auto Sell", 
-                                Content = string.format("Sold %d fish automatically", fishCount),
-                                Duration = 2
+                                Content = string.format("Sold %d fish automatically", fishCount)
                             })
                         end
                     end
@@ -875,8 +905,7 @@ local function StartAutoSell()
     
     Notify({
         Title = "Auto Sell Started", 
-        Content = string.format("Auto selling when fish count >= %d", autoSellThreshold),
-        Duration = 3
+        Content = string.format("Auto selling when fish count >= %d", autoSellThreshold)
     })
 end
 
@@ -889,7 +918,10 @@ local function StopAutoSell()
         autoSellLoop = nil
     end
     
-    Notify({Title = "Auto Sell", Content = "Auto sell stopped", Duration = 2})
+    Notify({
+        Title = "Auto Sell", 
+        Content = "Auto sell stopped"
+    })
 end
 
 local function SetAutoSellThreshold(amount)
@@ -897,8 +929,7 @@ local function SetAutoSellThreshold(amount)
         autoSellThreshold = amount
         Notify({
             Title = "Auto Sell Threshold", 
-            Content = string.format("Threshold set to %d fish", amount),
-            Duration = 3
+            Content = string.format("Threshold set to %d fish", amount)
         })
         return true
     end
@@ -909,9 +940,15 @@ end
 local function SafeToggleRadar()
     local success, message = ToggleFishingRadar()
     if success then
-        Notify({Title = "Fishing Radar", Content = message, Duration = 3})
+        Notify({
+            Title = "Fishing Radar", 
+            Content = message
+        })
     else
-        Notify({Title = "Radar Error", Content = message, Duration = 4})
+        Notify({
+            Title = "Radar Error", 
+            Content = message
+        })
     end
 end
 
@@ -919,9 +956,15 @@ end
 local function SafeToggleDivingGear()
     local success, message = ToggleDivingGear()
     if success then
-        Notify({Title = "Diving Gear", Content = message, Duration = 3})
+        Notify({
+            Title = "Diving Gear", 
+            Content = message
+        })
     else
-        Notify({Title = "Diving Gear Error", Content = message, Duration = 4})
+        Notify({
+            Title = "Diving Gear Error", 
+            Content = message
+        })
     end
 end
 
@@ -937,7 +980,7 @@ local function CreateCoordinateDisplay()
     local frame = Instance.new("Frame", sg)
     frame.Size = UDim2.new(0, 220, 0, 40)
     frame.Position = UDim2.new(0.5, -110, 0, 15)
-    frame.BackgroundColor3 = COLOR_SECONDARY
+    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     frame.BackgroundTransparency = 0.1
     frame.BorderSizePixel = 0
     
@@ -982,65 +1025,71 @@ local function DestroyCoordinateDisplay()
 end
 
 -- =============================================================================
--- MAIN WINDOW CREATION
+-- UI CREATION WITH LATES LIB
 -- =============================================================================
 
--- Main Window Creation
-local Window = Rayfield:CreateWindow({
-    Name = "Anggazyy Hub - Fish It",
-    Icon = "fish",
-    LoadingTitle = "Anggazyy Hub",
-    LoadingSubtitle = "Premium Automation System",
-    Theme = "Dark",
-    ShowText = "AnggazyyHub",
-    ToggleUIKeybind = Enum.KeyCode.K,
-    ConfigurationSaving = {
-        Enabled = true,
-        FolderName = "AnggazyyHubConfig",
-        FileName = "FishIt_Config"
-    }
+-- Add Tab Sections
+Window:AddTabSection({
+	Name = "Main",
+	Order = 1,
 })
 
--- ========== INFORMATION TAB ==========
-local InfoTab = Window:CreateTab("Information", "info")
-
-InfoTab:CreateParagraph({
-    Title = "Anggazyy Hub - Fish It",
-    Content = "Premium fishing automation with performance optimization"
+Window:AddTabSection({
+	Name = "Bypass",
+	Order = 2,
 })
 
--- ========== AUTO SYSTEM TAB ==========
-local AutoTab = Window:CreateTab("Automation", "fish")
-
-AutoTab:CreateParagraph({
-    Title = "Auto Fishing System",
-    Content = "Automated fishing with server communication"
+Window:AddTabSection({
+	Name = "Player",
+	Order = 3,
 })
 
-statusParagraph = AutoTab:CreateParagraph({
-    Title = "Status:",
-    Content = "DISABLED"
+Window:AddTabSection({
+	Name = "Settings",
+	Order = 4,
 })
 
-AutoTab:CreateToggle({
-    Name = "Enable Auto Fishing",
-    CurrentValue = false,
-    Flag = "AutoFishToggle",
-    Callback = function(state)
-        if state then
-            StartAutoFish()
-        else
-            StopAutoFish()
-        end
-    end
+-- ========== MAIN TAB ==========
+local MainTab = Window:AddTab({
+	Title = "Main",
+	Section = "Main",
+	Icon = "rbxassetid://11963373994"
+})
+
+Window:AddSection({ Name = "Auto Fishing System", Tab = MainTab })
+
+Window:AddParagraph({
+	Title = "Auto Fishing Status",
+	Description = autoFishEnabled and "🟢 ACTIVE - Fishing automation running" or "🔴 DISABLED - System inactive",
+	Tab = MainTab
+})
+
+Window:AddToggle({
+	Title = "Enable Auto Fishing",
+	Description = "Automated fishing with server communication",
+	Tab = MainTab,
+	Callback = function(state)
+		if state then
+			StartAutoFish()
+		else
+			StopAutoFish()
+		end
+	end,
 })
 
 -- ========== WEATHER MACHINE TAB ==========
-local WeatherTab = Window:CreateTab("Weather Machine", "cloud")
+local WeatherTab = Window:AddTab({
+	Title = "Weather",
+	Section = "Main",
+	Icon = "rbxassetid://11244595125"
+})
 
-WeatherTab:CreateParagraph({
-    Title = "Weather Machine",
-    Content = "Purchase and activate different weather events"
+Window:AddSection({ Name = "Weather Machine", Tab = WeatherTab })
+
+Window:AddParagraph({
+	Title = "Weather Machine",
+	Description = "Purchase and activate different weather events",
+	Tab = WeatherTab
 })
 
 -- Load weather data initially
@@ -1052,416 +1101,434 @@ for _, weather in ipairs(availableWeathers) do
     table.insert(weatherOptions, weather.DisplayName)
 end
 
-local weatherDropdown = WeatherTab:CreateDropdown({
-    Name = "Available Weathers",
-    Options = weatherOptions,
-    CurrentOption = weatherOptions[1] or "No weathers available",
-    Flag = "WeatherSelection",
-    Callback = function(selected)
-        -- Selection is handled through toggles
-    end
+Window:AddDropdown({
+	Title = "Available Weathers",
+	Description = "Select weather to purchase",
+	Tab = WeatherTab,
+	Options = weatherOptions,
+	Callback = function(selected)
+		-- Selection is handled through toggles
+	end,
 })
 
 -- Weather Selection Toggles
-local weatherToggles = {}
 for index, weather in ipairs(availableWeathers) do
-    local toggle = WeatherTab:CreateToggle({
-        Name = weather.DisplayName,
-        CurrentValue = false,
-        Flag = "WeatherToggle_" .. weather.InternalName,
-        Callback = function(state)
-            ToggleWeatherSelection(index, state)
-        end
-    })
-    table.insert(weatherToggles, toggle)
+	Window:AddToggle({
+		Title = weather.DisplayName,
+		Description = "Select this weather",
+		Tab = WeatherTab,
+		Callback = function(state)
+			ToggleWeatherSelection(index, state)
+		end,
+	})
 end
 
--- Purchase Button
-WeatherTab:CreateButton({
-    Name = "Buy Selected Weathers",
-    Callback = BuySelectedWeathers
+Window:AddButton({
+	Title = "Buy Selected Weathers",
+	Description = "Purchase all selected weather events",
+	Tab = WeatherTab,
+	Callback = BuySelectedWeathers,
 })
 
--- Refresh Button
-WeatherTab:CreateButton({
-    Name = "Refresh Weather List",
-    Callback = function()
-        local newOptions, newWeathers = RefreshWeatherList()
-        weatherDropdown:UpdateOptions(newOptions)
-        
-        -- Update toggles
-        for _, toggle in ipairs(weatherToggles) do
-            pcall(function() toggle:Destroy() end)
-        end
-        weatherToggles = {}
-        
-        for index, weather in ipairs(newWeathers) do
-            local toggle = WeatherTab:CreateToggle({
-                Name = weather.DisplayName,
-                CurrentValue = false,
-                Flag = "WeatherToggle_" .. weather.InternalName,
-                Callback = function(state)
-                    ToggleWeatherSelection(index, state)
-                end
-            })
-            table.insert(weatherToggles, toggle)
-        end
-        
-        Notify({
-            Title = "Weather List Updated",
-            Content = string.format("Loaded %d available weathers", #newWeathers),
-            Duration = 3
-        })
-    end
-})
-
-WeatherTab:CreateParagraph({
-    Title = "Instructions",
-    Content = "1. Select weathers using toggles\n2. Click 'Buy Selected Weathers' to purchase\n3. Multiple selections allowed"
+Window:AddButton({
+	Title = "Refresh Weather List",
+	Description = "Reload available weather data",
+	Tab = WeatherTab,
+	Callback = function()
+		local newOptions, newWeathers = RefreshWeatherList()
+		Notify({
+			Title = "Weather List Updated",
+			Content = string.format("Loaded %d available weathers", #newWeathers)
+		})
+	end,
 })
 
 -- ========== BYPASS TAB ==========
-local BypassTab = Window:CreateTab("Bypass", "radar")
-
-BypassTab:CreateParagraph({
-    Title = "Game Bypass Features",
-    Content = "Advanced features to enhance gameplay"
+local BypassTab = Window:AddTab({
+	Title = "Bypass",
+	Section = "Bypass",
+	Icon = "rbxassetid://11244595125"
 })
 
--- Fishing Radar Section
-BypassTab:CreateSection("Fishing Radar")
+Window:AddSection({ Name = "Fishing Radar", Tab = BypassTab })
 
-BypassTab:CreateToggle({
-    Name = "Fishing Radar",
-    CurrentValue = false,
-    Flag = "FishingRadarToggle",
-    Callback = function(state)
-        if state then
-            StartFishingRadar()
-        else
-            StopFishingRadar()
-        end
-    end
+Window:AddToggle({
+	Title = "Fishing Radar",
+	Description = "Reveal fishing spots on the map",
+	Tab = BypassTab,
+	Callback = function(state)
+		if state then
+			StartFishingRadar()
+		else
+			StopFishingRadar()
+		end
+	end,
 })
 
-BypassTab:CreateButton({
-    Name = "Toggle Radar",
-    Callback = SafeToggleRadar
+Window:AddButton({
+	Title = "Toggle Radar",
+	Description = "Quick toggle fishing radar",
+	Tab = BypassTab,
+	Callback = SafeToggleRadar,
 })
 
--- Diving Gear Section
-BypassTab:CreateSection("Diving Gear")
+Window:AddSection({ Name = "Diving Gear", Tab = BypassTab })
 
-BypassTab:CreateToggle({
-    Name = "Diving Gear",
-    CurrentValue = false,
-    Flag = "DivingGearToggle",
-    Callback = function(state)
-        if state then
-            StartDivingGear()
-        else
-            StopDivingGear()
-        end
-    end
+Window:AddToggle({
+	Title = "Diving Gear",
+	Description = "Automatically equip diving gear",
+	Tab = BypassTab,
+	Callback = function(state)
+		if state then
+			StartDivingGear()
+		else
+			StopDivingGear()
+		end
+	end,
 })
 
-BypassTab:CreateButton({
-    Name = "Toggle Diving Gear",
-    Callback = SafeToggleDivingGear
+Window:AddButton({
+	Title = "Toggle Diving Gear",
+	Description = "Quick toggle diving gear",
+	Tab = BypassTab,
+	Callback = SafeToggleDivingGear,
 })
 
--- Auto Sell Section
-BypassTab:CreateSection("Auto Sell Fish")
+Window:AddSection({ Name = "Auto Sell Fish", Tab = BypassTab })
 
-BypassTab:CreateToggle({
-    Name = "Auto Sell Fish",
-    CurrentValue = false,
-    Flag = "AutoSellToggle",
-    Callback = function(state)
-        if state then
-            StartAutoSell()
-        else
-            StopAutoSell()
-        end
-    end
+Window:AddToggle({
+	Title = "Auto Sell Fish",
+	Description = "Automatically sell fish when threshold is reached",
+	Tab = BypassTab,
+	Callback = function(state)
+		if state then
+			StartAutoSell()
+		else
+			StopAutoSell()
+		end
+	end,
 })
 
-BypassTab:CreateSlider({
-    Name = "Sell Threshold",
-    Range = {1, 50},
-    Increment = 1,
-    CurrentValue = 3,
-    Suffix = "fish",
-    Flag = "AutoSellThreshold",
-    Callback = function(value)
-        SetAutoSellThreshold(value)
-    end
+Window:AddSlider({
+	Title = "Sell Threshold",
+	Description = "Number of fish to trigger auto sell",
+	Tab = BypassTab,
+	MaxValue = 50,
+	Default = 3,
+	Callback = function(value)
+		SetAutoSellThreshold(value)
+	end,
 })
 
-BypassTab:CreateButton({
-    Name = "Sell All Fish Now",
-    Callback = ManualSellAllFish
+Window:AddButton({
+	Title = "Sell All Fish Now",
+	Description = "Manually sell all fish immediately",
+	Tab = BypassTab,
+	Callback = ManualSellAllFish,
 })
 
--- =============================================================================
--- TRICK OR TREAT SECTION - DITAMBAHKAN DI BYPASS TAB
--- =============================================================================
-BypassTab:CreateSection("🎃 Trick or Treat")
+Window:AddSection({ Name = "🎃 Trick or Treat", Tab = BypassTab })
 
-BypassTab:CreateToggle({
-    Name = "Auto Trick or Treat",
-    CurrentValue = false,
-    Flag = "AutoTrickTreatToggle",
-    Callback = function(state)
-        if state then
-            StartAutoTrickTreat()
-        else
-            StopAutoTrickTreat()
-        end
-    end
+Window:AddToggle({
+	Title = "Auto Trick or Treat",
+	Description = "Automatically knock on all Trick or Treat doors",
+	Tab = BypassTab,
+	Callback = function(state)
+		if state then
+			StartAutoTrickTreat()
+		else
+			StopAutoTrickTreat()
+		end
+	end,
 })
 
-BypassTab:CreateButton({
-    Name = "Knock All Doors Now",
-    Callback = ManualKnockAllDoors
+Window:AddButton({
+	Title = "Knock All Doors Now",
+	Description = "Manually knock on all doors once",
+	Tab = BypassTab,
+	Callback = ManualKnockAllDoors,
 })
 
-BypassTab:CreateParagraph({
-    Title = "Trick or Treat Info",
-    Content = "Automatically knocks on all Trick or Treat doors\n🎃 = Trick | 🍬 = Treat (Candy Corns)"
+Window:AddParagraph({
+	Title = "Trick or Treat Info",
+	Description = "Automatically knocks on all Trick or Treat doors\n🎃 = Trick | 🍬 = Treat (Candy Corns)",
+	Tab = BypassTab
 })
 
--- Quick Actions Section
-BypassTab:CreateSection("Quick Actions")
+Window:AddSection({ Name = "Quick Actions", Tab = BypassTab })
 
-BypassTab:CreateButton({
-    Name = "Enable All Bypass",
-    Callback = function()
-        StartFishingRadar()
-        StartDivingGear()
-        StartAutoSell()
-        StartAutoTrickTreat()
-        Notify({Title = "Bypass", Content = "All bypass features enabled", Duration = 3})
-    end
+Window:AddButton({
+	Title = "Enable All Bypass",
+	Description = "Activate all bypass features at once",
+	Tab = BypassTab,
+	Callback = function()
+		StartFishingRadar()
+		StartDivingGear()
+		StartAutoSell()
+		StartAutoTrickTreat()
+		Notify({
+			Title = "Bypass", 
+			Content = "All bypass features enabled"
+		})
+	end,
 })
 
-BypassTab:CreateButton({
-    Name = "Disable All Bypass",
-    Callback = function()
-        StopFishingRadar()
-        StopDivingGear()
-        StopAutoSell()
-        StopAutoTrickTreat()
-        Notify({Title = "Bypass", Content = "All bypass features disabled", Duration = 3})
-    end
+Window:AddButton({
+	Title = "Disable All Bypass",
+	Description = "Deactivate all bypass features at once",
+	Tab = BypassTab,
+	Callback = function()
+		StopFishingRadar()
+		StopDivingGear()
+		StopAutoSell()
+		StopAutoTrickTreat()
+		Notify({
+			Title = "Bypass", 
+			Content = "All bypass features disabled"
+		})
+	end,
 })
 
--- ========== PLAYER CONFIGURATION TAB ==========
-local PlayerConfigTab = Window:CreateTab("Player Config", "settings")
-
--- Performance Section
-PlayerConfigTab:CreateSection("Performance")
-
-PlayerConfigTab:CreateToggle({
-    Name = "Ultra Anti Lag",
-    CurrentValue = false,
-    Flag = "AntiLagToggle",
-    Callback = function(state)
-        if state then
-            EnableAntiLag()
-        else
-            DisableAntiLag()
-        end
-    end
+-- ========== PLAYER TAB ==========
+local PlayerTab = Window:AddTab({
+	Title = "Player",
+	Section = "Player",
+	Icon = "rbxassetid://11244595125"
 })
 
--- Position Section
-PlayerConfigTab:CreateSection("Position")
+Window:AddSection({ Name = "Performance", Tab = PlayerTab })
 
-PlayerConfigTab:CreateButton({
-    Name = "Save Position",
-    Callback = SaveCurrentPosition
+Window:AddToggle({
+	Title = "Ultra Anti Lag",
+	Description = "White texture mode for maximum performance",
+	Tab = PlayerTab,
+	Callback = function(state)
+		if state then
+			EnableAntiLag()
+		else
+			DisableAntiLag()
+		end
+	end,
 })
 
-PlayerConfigTab:CreateButton({
-    Name = "Load Position", 
-    Callback = LoadSavedPosition
+Window:AddSection({ Name = "Position Management", Tab = PlayerTab })
+
+Window:AddButton({
+	Title = "Save Position",
+	Description = "Save current player position",
+	Tab = PlayerTab,
+	Callback = SaveCurrentPosition,
 })
 
-PlayerConfigTab:CreateToggle({
-    Name = "Lock Position",
-    CurrentValue = false,
-    Flag = "LockPositionToggle",
-    Callback = function(state)
-        if state then
-            StartLockPosition()
-        else
-            StopLockPosition()
-        end
-    end
+Window:AddButton({
+	Title = "Load Position",
+	Description = "Teleport to saved position",
+	Tab = PlayerTab,
+	Callback = LoadSavedPosition,
 })
 
--- Quick Actions
-PlayerConfigTab:CreateSection("Quick Actions")
-
-PlayerConfigTab:CreateButton({
-    Name = "Max Performance",
-    Callback = function()
-        EnableAntiLag()
-        Notify({Title = "Performance", Content = "Maximum performance enabled", Duration = 2})
-    end
+Window:AddToggle({
+	Title = "Lock Position",
+	Description = "Prevent player from moving away from saved position",
+	Tab = PlayerTab,
+	Callback = function(state)
+		if state then
+			StartLockPosition()
+		else
+			StopLockPosition()
+		end
+	end,
 })
 
--- ========== TELEPORTATION TAB ==========
-local TeleportTab = Window:CreateTab("Teleportation", "map-pin")
+Window:AddSection({ Name = "Movement", Tab = PlayerTab })
 
-TeleportTab:CreateParagraph({
-    Title = "Location Teleport",
-    Content = "Quick teleport to fishing spots"
+Window:AddSlider({
+	Title = "Walk Speed",
+	Description = "Adjust player walking speed",
+	Tab = PlayerTab,
+	MaxValue = 200,
+	Default = 16,
+	Callback = function(val)
+		if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+			LocalPlayer.Character.Humanoid.WalkSpeed = val
+		end
+	end,
 })
 
-TeleportTab:CreateDropdown({
-    Name = "Select Destination",
-    Options = { "Mount Hallow" },
-    CurrentOption = "Mount Hallow",
-    Flag = "MapSelect",
-    Callback = function(selected)
-        currentSelectedMap = selected
-    end
+Window:AddSlider({
+	Title = "Jump Power",
+	Description = "Adjust player jump power",
+	Tab = PlayerTab,
+	MaxValue = 350,
+	Default = 50,
+	Callback = function(val)
+		if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+			LocalPlayer.Character.Humanoid.JumpPower = val
+		end
+	end,
 })
 
-TeleportTab:CreateButton({
-    Name = "Teleport Now",
-    Callback = function()
-        local pos = Vector3.new(1819, 12, 3043)
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(pos)
-            Notify({Title = "Teleport", Content = "Teleported to Mount Hallow", Duration = 2})
-        end
-    end
+Window:AddButton({
+	Title = "Reset Movement",
+	Description = "Reset walk speed and jump power to default",
+	Tab = PlayerTab,
+	Callback = function()
+		if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+			LocalPlayer.Character.Humanoid.WalkSpeed = 16
+			LocalPlayer.Character.Humanoid.JumpPower = 50
+			Notify({
+				Title = "Reset", 
+				Content = "Movement reset to default"
+			})
+		end
+	end,
 })
 
-TeleportTab:CreateToggle({
-    Name = "Show Coordinates",
-    CurrentValue = false,
-    Flag = "ShowCoords",
-    Callback = function(v)
-        if v then
-            CreateCoordinateDisplay()
-        else
-            DestroyCoordinateDisplay()
-        end
-    end
+Window:AddSection({ Name = "Teleportation", Tab = PlayerTab })
+
+Window:AddDropdown({
+	Title = "Select Destination",
+	Description = "Choose location to teleport",
+	Tab = PlayerTab,
+	Options = { "Mount Hallow" },
+	Callback = function(selected)
+		currentSelectedMap = selected
+	end,
 })
 
--- ========== PLAYER MANAGEMENT TAB ==========
-local PlayerTab = Window:CreateTab("Player Stats", "user")
-
-PlayerTab:CreateSection("Movement")
-
-PlayerTab:CreateSlider({
-    Name = "Walk Speed",
-    Range = {16, 200},
-    Increment = 1,
-    CurrentValue = 16,
-    Suffix = "studs/s",
-    Callback = function(val)
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.WalkSpeed = val
-        end
-    end
+Window:AddButton({
+	Title = "Teleport Now",
+	Description = "Teleport to selected destination",
+	Tab = PlayerTab,
+	Callback = function()
+		local pos = Vector3.new(1819, 12, 3043)
+		if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+			LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(pos)
+			Notify({
+				Title = "Teleport", 
+				Content = "Teleported to Mount Hallow"
+			})
+		end
+	end,
 })
 
-PlayerTab:CreateSlider({
-    Name = "Jump Power",
-    Range = {50, 350},
-    Increment = 1,
-    CurrentValue = 50,
-    Suffix = "power",
-    Callback = function(val)
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.JumpPower = val
-        end
-    end
-})
-
-PlayerTab:CreateButton({
-    Name = "Reset Movement",
-    Callback = function()
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.WalkSpeed = 16
-            LocalPlayer.Character.Humanoid.JumpPower = 50
-            Notify({Title = "Reset", Content = "Movement reset to default", Duration = 2})
-        end
-    end
+Window:AddToggle({
+	Title = "Show Coordinates",
+	Description = "Display player coordinates on screen",
+	Tab = PlayerTab,
+	Callback = function(v)
+		if v then
+			CreateCoordinateDisplay()
+		else
+			DestroyCoordinateDisplay()
+		end
+	end,
 })
 
 -- ========== SETTINGS TAB ==========
-local SettingsTab = Window:CreateTab("Settings", "settings")
-
-SettingsTab:CreateButton({
-    Name = "Unload Hub",
-    Callback = function()
-        StopAutoFish()
-        StopLockPosition()
-        DisableAntiLag()
-        StopFishingRadar()
-        StopDivingGear()
-        StopAutoSell()
-        StopAutoTrickTreat()
-        DestroyCoordinateDisplay()
-        Rayfield:Destroy()
-        Notify({Title = "Unload", Content = "Hub unloaded successfully", Duration = 2})
-    end
+local SettingsTab = Window:AddTab({
+	Title = "Settings",
+	Section = "Settings",
+	Icon = "rbxassetid://11293977610",
 })
 
-SettingsTab:CreateButton({
-    Name = "Clean UI",
-    Callback = function()
-        for _, obj in ipairs(CoreGui:GetDescendants()) do
-            pcall(function()
-                if (obj:IsA("ImageLabel") or obj:IsA("ImageButton") or obj:IsA("TextLabel")) then
-                    local name = (obj.Name or ""):lower()
-                    local text = (obj.Text or ""):lower()
-                    if string.find(name, "money") or string.find(text, "money") then
-                        obj.Visible = false
-                    end
-                end
-            end)
-        end
-        Notify({Title = "Clean", Content = "UI cleaned", Duration = 2})
-    end
+Window:AddSection({ Name = "UI Settings", Tab = SettingsTab })
+
+Window:AddKeybind({
+	Title = "Minimize Keybind",
+	Description = "Set the keybind for minimizing the UI",
+	Tab = SettingsTab,
+	Callback = function(Key)
+		Window:SetSetting("Keybind", Key)
+	end,
 })
 
--- Enhanced Visual Effects
-pcall(function()
-    local mainBG = Window.UIElements and Window.UIElements.MainFrame and Window.UIElements.MainFrame.Background
-    if mainBG then
-        task.spawn(function()
-            local colors = {
-                Color3.fromRGB(30, 18, 45),
-                Color3.fromRGB(35, 22, 55),
-                Color3.fromRGB(25, 18, 40),
-            }
-            local i = 1
-            while task.wait(6) and mainBG.Parent do
-                local nextI = i % #colors + 1
-                local tween = TweenService:Create(mainBG, TweenInfo.new(5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {BackgroundColor3 = colors[nextI]})
-                tween:Play()
-                i = nextI
-            end
-        end)
-    end
-end)
+Window:AddDropdown({
+	Title = "Set Theme",
+	Description = "Change the UI theme",
+	Tab = SettingsTab,
+	Options = {
+		["Light Mode"] = "Light",
+		["Dark Mode"] = "Dark",
+		["Extra Dark"] = "Void",
+	},
+	Callback = function(Theme)
+		Window:SetTheme(Theme)
+	end,
+})
 
--- Configuration Loading
-Rayfield:LoadConfiguration()
+Window:AddToggle({
+	Title = "UI Blur",
+	Description = "Enable background blur effect (requires graphics 8+)",
+	Default = true,
+	Tab = SettingsTab,
+	Callback = function(Boolean)
+		Window:SetSetting("Blur", Boolean)
+	end,
+})
+
+Window:AddSlider({
+	Title = "UI Transparency",
+	Description = "Adjust UI transparency level",
+	Tab = SettingsTab,
+	AllowDecimals = true,
+	MaxValue = 1,
+	Default = 0.2,
+	Callback = function(Amount)
+		Window:SetSetting("Transparency", Amount)
+	end,
+})
+
+Window:AddSection({ Name = "Hub Controls", Tab = SettingsTab })
+
+Window:AddButton({
+	Title = "Unload Hub",
+	Description = "Safely unload the entire hub",
+	Tab = SettingsTab,
+	Callback = function()
+		StopAutoFish()
+		StopLockPosition()
+		DisableAntiLag()
+		StopFishingRadar()
+		StopDivingGear()
+		StopAutoSell()
+		StopAutoTrickTreat()
+		DestroyCoordinateDisplay()
+		Window:Destroy()
+		Notify({
+			Title = "Unload", 
+			Content = "Hub unloaded successfully"
+		})
+	end,
+})
+
+Window:AddButton({
+	Title = "Clean UI",
+	Description = "Remove money icons and clean up UI",
+	Tab = SettingsTab,
+	Callback = function()
+		for _, obj in ipairs(CoreGui:GetDescendants()) do
+			pcall(function()
+				if (obj:IsA("ImageLabel") or obj:IsA("ImageButton") or obj:IsA("TextLabel")) then
+					local name = (obj.Name or ""):lower()
+					local text = (obj.Text or ""):lower()
+					if string.find(name, "money") or string.find(text, "money") then
+						obj.Visible = false
+					end
+				end
+			end)
+		end
+		Notify({
+			Title = "Clean", 
+			Content = "UI cleaned"
+		})
+	end,
+})
 
 -- Initial Notification
 Notify({
-    Title = "Anggazyy Hub Ready", 
-    Content = "System initialized successfully",
-    Duration = 4
+	Title = "Anggazyy Hub Ready", 
+	Content = "System initialized successfully"
 })
 
 --//////////////////////////////////////////////////////////////////////////////////
