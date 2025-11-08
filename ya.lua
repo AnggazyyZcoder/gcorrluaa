@@ -1,5 +1,5 @@
 --//////////////////////////////////////////////////////////////////////////////////
--- Anggazyy Hub - Fish It (FINAL)
+-- Anggazyy Hub - Fish It (FINAL) + Weather Machine
 -- Rayfield UI + Lucide icons
 -- Clean, modern, professional design
 -- Author: Anggazyy (refactor)
@@ -40,6 +40,10 @@ local divingGearEnabled = false
 local autoSellEnabled = false
 local autoSellThreshold = 3
 local autoSellLoop = nil
+
+-- Weather System Variables
+local selectedWeathers = {}
+local availableWeathers = {}
 
 -- UI Configuration
 local COLOR_ENABLED = Color3.fromRGB(76, 175, 80)  -- Green
@@ -128,6 +132,152 @@ local function SafeInvokeAutoFishing(state)
             return
         end
     end)
+end
+
+-- =============================================================================
+-- WEATHER MACHINE SYSTEM
+-- =============================================================================
+
+local function LoadWeatherData()
+    local success, result = pcall(function()
+        -- Load required modules
+        local EventUtility = require(ReplicatedStorage.Shared.EventUtility)
+        local StringLibrary = require(ReplicatedStorage.Shared.StringLibrary)
+        local Events = require(ReplicatedStorage.Events)
+        
+        local weatherList = {}
+        
+        -- Iterate through all events to find weather machines
+        for name, data in pairs(Events) do
+            local event = EventUtility:GetEvent(name)
+            if event and event.WeatherMachine and event.WeatherMachinePrice then
+                table.insert(weatherList, {
+                    Name = event.Name or name,
+                    InternalName = name,
+                    Price = event.WeatherMachinePrice,
+                    DisplayName = string.format("%s - %s Coins", event.Name or name, StringLibrary:AddCommas(event.WeatherMachinePrice))
+                })
+            end
+        end
+        
+        -- Sort by price (ascending)
+        table.sort(weatherList, function(a, b)
+            return a.Price < b.Price
+        end)
+        
+        return weatherList
+    end)
+    
+    if success then
+        return result
+    else
+        warn("⚠️ Failed to load weather data:", result)
+        return {}
+    end
+end
+
+local function PurchaseWeather(weatherName)
+    local success, result = pcall(function()
+        -- Load required modules
+        local Net = require(ReplicatedStorage.Packages.Net)
+        local PurchaseWeatherEvent = Net:RemoteFunction("PurchaseWeatherEvent")
+        
+        -- Purchase the weather
+        local purchaseResult = PurchaseWeatherEvent:InvokeServer(weatherName)
+        return purchaseResult
+    end)
+    
+    return success, result
+end
+
+local function BuySelectedWeathers()
+    if not next(selectedWeathers) then
+        Notify({
+            Title = "Weather Purchase",
+            Content = "No weathers selected!",
+            Duration = 3
+        })
+        return
+    end
+    
+    local totalPurchases = 0
+    local successfulPurchases = 0
+    
+    Notify({
+        Title = "Weather Purchase",
+        Content = "Processing purchases...",
+        Duration = 2
+    })
+    
+    for weatherName, selected in pairs(selectedWeathers) do
+        if selected then
+            totalPurchases = totalPurchases + 1
+            
+            -- Find weather data
+            local weatherData
+            for _, weather in ipairs(availableWeathers) do
+                if weather.InternalName == weatherName then
+                    weatherData = weather
+                    break
+                end
+            end
+            
+            if weatherData then
+                local success, result = PurchaseWeather(weatherName)
+                if success and result then
+                    successfulPurchases = successfulPurchases + 1
+                    Notify({
+                        Title = "✅ Purchase Successful",
+                        Content = string.format("Bought: %s", weatherData.Name),
+                        Duration = 3
+                    })
+                else
+                    Notify({
+                        Title = "❌ Purchase Failed",
+                        Content = string.format("Failed to buy: %s", weatherData.Name),
+                        Duration = 4
+                    })
+                end
+            end
+            
+            -- Small delay between purchases
+            task.wait(0.5)
+        end
+    end
+    
+    -- Clear selection after purchase
+    selectedWeathers = {}
+    
+    Notify({
+        Title = "Purchase Complete",
+        Content = string.format("Successfully purchased %d/%d weathers", successfulPurchases, totalPurchases),
+        Duration = 4
+    })
+end
+
+local function RefreshWeatherList()
+    availableWeathers = LoadWeatherData()
+    
+    -- Create display options for dropdown
+    local weatherOptions = {}
+    for _, weather in ipairs(availableWeathers) do
+        table.insert(weatherOptions, weather.DisplayName)
+    end
+    
+    return weatherOptions, availableWeathers
+end
+
+local function ToggleWeatherSelection(weatherIndex, state)
+    if availableWeathers[weatherIndex] then
+        local weather = availableWeathers[weatherIndex]
+        selectedWeathers[weather.InternalName] = state
+        
+        Notify({
+            Title = state and "✅ Weather Selected" or "❌ Weather Deselected",
+            Content = string.format("%s %s", weather.Name, state and "selected" or "deselected"),
+            Duration = 2
+        })
+    end
 end
 
 -- Auto Fishing System
@@ -728,6 +878,91 @@ AutoTab:CreateToggle({
             StopAutoFish()
         end
     end
+})
+
+-- ========== WEATHER MACHINE TAB ==========
+local WeatherTab = Window:CreateTab("Weather Machine", "cloud")
+
+WeatherTab:CreateParagraph({
+    Title = "Weather Machine",
+    Content = "Purchase and activate different weather events"
+})
+
+-- Load weather data initially
+availableWeathers = LoadWeatherData()
+
+-- Weather Selection Dropdown
+local weatherOptions = {}
+for _, weather in ipairs(availableWeathers) do
+    table.insert(weatherOptions, weather.DisplayName)
+end
+
+local weatherDropdown = WeatherTab:CreateDropdown({
+    Name = "Available Weathers",
+    Options = weatherOptions,
+    CurrentOption = weatherOptions[1] or "No weathers available",
+    Flag = "WeatherSelection",
+    Callback = function(selected)
+        -- Selection is handled through toggles
+    end
+})
+
+-- Weather Selection Toggles
+local weatherToggles = {}
+for index, weather in ipairs(availableWeathers) do
+    local toggle = WeatherTab:CreateToggle({
+        Name = weather.DisplayName,
+        CurrentValue = false,
+        Flag = "WeatherToggle_" .. weather.InternalName,
+        Callback = function(state)
+            ToggleWeatherSelection(index, state)
+        end
+    })
+    table.insert(weatherToggles, toggle)
+end
+
+-- Purchase Button
+WeatherTab:CreateButton({
+    Name = "Buy Selected Weathers",
+    Callback = BuySelectedWeathers
+})
+
+-- Refresh Button
+WeatherTab:CreateButton({
+    Name = "Refresh Weather List",
+    Callback = function()
+        local newOptions, newWeathers = RefreshWeatherList()
+        weatherDropdown:UpdateOptions(newOptions)
+        
+        -- Update toggles
+        for _, toggle in ipairs(weatherToggles) do
+            pcall(function() toggle:Destroy() end)
+        end
+        weatherToggles = {}
+        
+        for index, weather in ipairs(newWeathers) do
+            local toggle = WeatherTab:CreateToggle({
+                Name = weather.DisplayName,
+                CurrentValue = false,
+                Flag = "WeatherToggle_" .. weather.InternalName,
+                Callback = function(state)
+                    ToggleWeatherSelection(index, state)
+                end
+            })
+            table.insert(weatherToggles, toggle)
+        end
+        
+        Notify({
+            Title = "Weather List Updated",
+            Content = string.format("Loaded %d available weathers", #newWeathers),
+            Duration = 3
+        })
+    end
+})
+
+WeatherTab:CreateParagraph({
+    Title = "Instructions",
+    Content = "1. Select weathers using toggles\n2. Click 'Buy Selected Weathers' to purchase\n3. Multiple selections allowed"
 })
 
 -- ========== BYPASS TAB ==========
