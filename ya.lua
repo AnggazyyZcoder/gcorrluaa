@@ -41,11 +41,6 @@ local autoSellEnabled = false
 local autoSellThreshold = 3
 local autoSellLoop = nil
 
--- Fishing System Variables
-local fishingSystemEnabled = false
-local fishingSystemLoop = nil
-local chargeDelay = 0.5
-
 -- UI Configuration
 local COLOR_ENABLED = Color3.fromRGB(76, 175, 80)  -- Green
 local COLOR_DISABLED = Color3.fromRGB(244, 67, 54) -- Red
@@ -133,401 +128,6 @@ local function SafeInvokeAutoFishing(state)
             return
         end
     end)
-end
-
--- =================================================================
--- ADVANCED FISHING SYSTEM - TAB FISHING IMPLEMENTATION
--- =================================================================
-
--- Fishing System Dependencies
-local function GetFishingDependencies()
-    local dependencies = {}
-    
-    pcall(function()
-        -- Get required modules
-        dependencies.RunService = RunService
-        dependencies.UserInputService = game:GetService("UserInputService")
-        dependencies.ReplicatedStorage = ReplicatedStorage
-        dependencies.Players = Players
-        dependencies.LocalPlayer = LocalPlayer
-        
-        -- Import packages
-        dependencies.Signal = require(ReplicatedStorage.Packages.Signal)
-        dependencies.Trove = require(ReplicatedStorage.Packages.Trove)
-        dependencies.Net = require(ReplicatedStorage.Packages.Net)
-        dependencies.spr = require(ReplicatedStorage.Packages.spr)
-        dependencies.Constants = require(ReplicatedStorage.Shared.Constants)
-        dependencies.Soundbook = require(ReplicatedStorage.Shared.Soundbook)
-        dependencies.GuiControl = require(ReplicatedStorage.Modules.GuiControl)
-        dependencies.HUDController = require(ReplicatedStorage.Controllers.HUDController)
-        dependencies.AnimationController = require(ReplicatedStorage.Controllers.AnimationController)
-        dependencies.TextNotificationController = require(ReplicatedStorage.Controllers.TextNotificationController)
-        dependencies.BlockedHumanoidStates = require(ReplicatedStorage.Shared.BlockedHumanoidStates)
-        
-        -- Get UI elements
-        local PlayerGui = LocalPlayer.PlayerGui
-        dependencies.Charge_upvr = PlayerGui:WaitForChild("Charge")
-        dependencies.Fishing_upvr = PlayerGui:WaitForChild("Fishing")
-        dependencies.Main_upvr = dependencies.Fishing_upvr.Main
-        dependencies.CanvasGroup_upvr = dependencies.Main_upvr.Display.CanvasGroup
-    end)
-    
-    return dependencies
-end
-
--- Fishing System Implementation
-local function CreateFishingSystem()
-    local deps = GetFishingDependencies()
-    if not deps.Net then 
-        warn("Fishing System: Net module not found")
-        return nil 
-    end
-    
-    -- Variabel status internal
-    local var17_upvw = { Data = { EquippedId = 123 } } -- SIMULASI: Harus diinisialisasi agar rod check lulus
-    local var32_upvw = false 
-    local var34_upvw = false -- Is Stopped/Closing
-    local var35_upvw = nil -- Charge Start Time
-    local var36_upvw = nil -- Minigame UUID
-    local var37_upvw = nil -- Minigame State / Data (Progress, ClickPower)
-    local var38_upvw = 0 -- Cooldown Time
-    local var40_upvw = nil -- Reel Sound Track
-    local var109_upvw = false -- Is Charging flag
-
-    -- Trove untuk pembersihan koneksi
-    local trove = deps.Trove.new()
-    local chargeTrove = deps.Trove.new()
-    local minigameTrove = deps.Trove.new()
-
-    -- Signal untuk Minigame Changes
-    local MinigameChangedSignal = deps.Signal.new()
-
-    -- Fungsi placeholder
-    local function RefreshIdle() 
-        print("Simulasi: Menghentikan animasi memancing.") 
-    end
-    
-    local function FishingRodEquipped(id) 
-        return id ~= nil 
-    end
-    
-    local function GetItemDataFromEquippedItem(id) 
-        if not id then return nil end
-        return { Data = { Type = "Fishing Rods", Name = "FishingRodSound" } }
-    end
-
-    -- =================================================================
-    -- FUNGSI KOMUNIKASI SERVER
-    -- =================================================================
-
-    -- Net Function: Digunakan untuk melempar joran
-    local CastFishingRod_Net = deps.Net:RemoteFunction("RequestFishingMinigameStarted") 
-    -- Net Event: Dari Server ke Klien, menandakan ikan menggigit
-    local FishingMinigameStarted_Net = deps.Net:RemoteEvent("FishingMinigameStarted")
-    -- Net Event: Dari Klien ke Server, menandakan Minigame selesai
-    local FishingCompleted_Net = deps.Net:RemoteEvent("FishingCompleted")
-    -- Net Function: Untuk memulai proses charge (opsional)
-    local ChargeFishingRod_Net = deps.Net:RemoteFunction("ChargeFishingRod")
-
-    -- =================================================================
-    -- FUNGSI OTOMATISASI: Auto Clicker
-    -- =================================================================
-
-    local AutoClickerConnection = nil
-
-    local function FishingMinigameClick()
-        if not var36_upvw or not var37_upvw then return end
-        local currentTime = workspace:GetServerTimeNow()
-        if currentTime - var37_upvw.LastInput < 0.1 then return end
-        local clamped = math.clamp(var37_upvw.Progress + var37_upvw.FishingClickPower, 0, 1)
-        var37_upvw.LastInput = currentTime
-        var37_upvw.Progress = clamped
-        var37_upvw.Inputs = (var37_upvw.Inputs or 0) + 1
-        MinigameChangedSignal:Fire(var37_upvw)
-        if clamped >= 1 then
-            minigameTrove:Clean()
-            FishingCompleted_Net:FireServer()
-            print("[Auto Click] Minigame Selesai. Notifikasi server dikirim.")
-        end
-        return true
-    end
-
-    local function StartAutoMinigameClicker()
-        if AutoClickerConnection then 
-            AutoClickerConnection:Disconnect()
-            AutoClickerConnection = nil
-        end
-        print("[Auto Clicker] Diaktifkan! Memulai spam klik.")
-        AutoClickerConnection = deps.RunService.Heartbeat:Connect(FishingMinigameClick)
-        minigameTrove:Add(AutoClickerConnection)
-    end
-
-    local function StopAutoMinigameClicker()
-        if AutoClickerConnection then
-            AutoClickerConnection:Disconnect()
-            AutoClickerConnection = nil
-            minigameTrove:Clean()
-            print("[Auto Clicker] Dihentikan.")
-        end
-    end
-
-    -- =================================================================
-    -- FUNGSI INTI: Minigame Started (Dipanggil oleh Server Event)
-    -- =================================================================
-
-    local function FishingRodStarted(data)
-        if var36_upvw then return end
-        print("[Server Event] Ikan Menggigit! Memulai Minigame...")
-        deps.AnimationController:PlayAnimation("ReelIntermission") -- Animasi
-        
-        var36_upvw = data.UUID
-        var37_upvw = data
-        
-        local reelSound = deps.Soundbook.Sounds.Reel:Play() -- Sound
-        var40_upvw = reelSound
-        reelSound.Volume = 0
-        deps.spr.target(reelSound, 5, 10, { Volume = deps.Soundbook.Sounds.Reel.Volume })
-        minigameTrove:Add(function() deps.spr.stop(reelSound); reelSound:Stop(); reelSound:Destroy() end)
-        
-        deps.spr.stop(deps.Fishing_upvr.Main) -- UI
-        deps.spr.target(deps.Fishing_upvr.Main, 50, 250, { Position = UDim2.fromScale(0.5, 0.95) })
-        deps.GuiControl:SetHUDVisibility(false)
-        deps.Fishing_upvr.Enabled = true
-
-        StartAutoMinigameClicker()
-    end
-
-    -- =================================================================
-    -- FUNGSI INTI: Fishing Stopped
-    -- =================================================================
-
-    local function FishingStopped(isSuccessful)
-        if var34_upvw then return end
-        var34_upvw = true
-        local isCatch = isSuccessful or (var37_upvw and var37_upvw.Progress >= 1)
-        StopAutoMinigameClicker()
-
-        if not isCatch then
-            deps.AnimationController:PlayAnimation("FishingFailure")
-        else
-            RefreshIdle()
-        end
-        
-        deps.HUDController.ResetCamera()
-        
-        deps.spr.stop(deps.Fishing_upvr.Main)
-        deps.spr.target(deps.Fishing_upvr.Main, 50, 100, { Position = UDim2.fromScale(0.5, 1.5) })
-        task.wait(0.45)
-        
-        chargeTrove:Clean()
-        minigameTrove:Clean()
-        deps.GuiControl:SetHUDVisibility(true)
-        var38_upvw = workspace:GetServerTimeNow()
-        
-        var34_upvw = false
-        var37_upvw = nil
-        var36_upvw = nil
-        
-        print("[Auto Fishing] Berhasil dibersihkan. Siap untuk proses berikutnya.")
-    end
-
-    -- =================================================================
-    -- FUNGSI INTI: Permintaan Lemparan
-    -- =================================================================
-
-    local function SendFishingRequestToServer(power)
-        local character = deps.LocalPlayer.Character
-        if not character or not character:FindFirstChild("HumanoidRootPart") then
-            return false
-        end
-        
-        local throwPosition = character.HumanoidRootPart.CFrame.Position + Vector3.new(0, -1, 10)
-        local castTime = workspace:GetServerTimeNow()
-        
-        local success, responseData = pcall(function()
-            return CastFishingRod_Net:InvokeServer(
-                throwPosition.Y,
-                power,
-                castTime
-            )
-        end)
-
-        if success then
-            print("[Server Response] Lemparan joran berhasil. Menunggu ikan menggigit...")
-            return true
-        else
-            deps.TextNotificationController:DeliverNotification({
-                Type = "Text", Text = "Gagal melempar: " .. tostring(responseData),
-                TextColor = { R = 255, G = 0, B = 0 }, CustomDuration = 3.5
-            })
-            return false
-        end
-    end
-
-    -- =================================================================
-    -- FUNGSI PENGONTROL OTOMATIS (DO THROW DIPERBAIKI)
-    -- =================================================================
-
-    local function internal_DoThrow(chargePower, clientRequestDestroy)
-        -- Lakukan Animasi Lempar
-        deps.AnimationController:DestroyActiveAnimationTracks()
-        deps.AnimationController:PlayAnimation("RodThrow")
-        
-        -- Lakukan Suara Lemparan
-        local itemData = GetItemDataFromEquippedItem(var17_upvw and var17_upvw.Data.EquippedId)
-        local sound = deps.Soundbook.Sounds.ThrowCast
-        if itemData and deps.Soundbook.Sounds[itemData.Data.Name] then
-            sound = deps.Soundbook.Sounds[itemData.Data.Name]
-        end
-        sound:Play().Volume = 0.5 + math.random() * 0.75
-
-        -- Kirim permintaan Lempar
-        local didServerAccept = SendFishingRequestToServer(chargePower)
-        
-        -- Jika server menolak lemparan, bersihkan
-        if not didServerAccept then
-            task.wait(0.1)
-            FishingStopped(false) 
-            if clientRequestDestroy then clientRequestDestroy() end
-        end
-        -- Jika diterima, Klien tetap diam dan menunggu FishingMinigameStarted_Net
-    end
-
-    local function StartAutoFishing(chargeDelaySeconds)
-        chargeDelaySeconds = chargeDelaySeconds or 0.5
-        
-        if var109_upvw or var34_upvw then
-            warn("Auto Fishing sudah berjalan atau sedang berhenti.")
-            return
-        end
-
-        -- 1. Check Awal (Cooldown & Equipped)
-        if workspace:GetServerTimeNow() - var38_upvw < deps.Constants.FishingCooldownTime then
-            deps.TextNotificationController:DeliverNotification({ Type = "Text", Text = "Memancing masih Cooldown!", TextColor = { R = 255, G = 0, B = 0 }, CustomDuration = 2 })
-            return
-        end
-        local rodData = GetItemDataFromEquippedItem(var17_upvw and var17_upvw.Data.EquippedId)
-        if not rodData or rodData.Data.Type ~= "Fishing Rods" then
-            deps.TextNotificationController:DeliverNotification({ Type = "Text", Text = "Tidak ada joran terpasang!", TextColor = { R = 255, G = 255, B = 0 }, CustomDuration = 2 })
-            return
-        end
-        
-        -- 2. Memulai Charge
-        var109_upvw = true
-        deps.AnimationController:StopAnimation("EquipIdle")
-        deps.AnimationController:PlayAnimation("StartRodCharge")
-        print(string.format("[Auto Charge] Dimulai. Menunggu %.2f detik...", chargeDelaySeconds))
-        
-        var35_upvw = workspace:GetServerTimeNow()
-        pcall(function()
-            ChargeFishingRod_Net:InvokeServer(nil, nil, nil, var35_upvw)
-        end)
-        
-        -- Tambahkan fungsi cleanup charge ke trove
-        chargeTrove:Add(function()
-            var109_upvw = false
-            deps.AnimationController:StopAnimation("StartRodCharge")
-            deps.AnimationController:StopAnimation("LoopedRodCharge")
-            RefreshIdle()
-        end)
-        
-        -- 3. Melempar setelah delay selesai
-        task.delay(chargeDelaySeconds, function()
-            -- Jika sudah dihentikan oleh proses lain (misal user input), jangan lempar
-            if not var109_upvw then return
-
-            local throwPower = deps.Constants:GetPower(var35_upvw)
-            
-            -- ** PENTING: Lakukan cleanup charge SEBELUM memanggil DoThrow, ini sesuai flow game. **
-            chargeTrove:Clean() 
-
-            -- Panggil fungsi lempar
-            internal_DoThrow(throwPower, function() FishingStopped(false) end) 
-        end)
-    end
-
-    -- =================================================================
-    -- SERVER EVENT LISTENERS
-    -- =================================================================
-
-    -- Menghubungkan Minigame Started Event dari Server ke FishingRodStarted
-    trove:Add(FishingMinigameStarted_Net:Connect(function(data)
-        FishingRodStarted(data)
-    end))
-
-    -- Menghubungkan Minigame Selesai dari Server ke proses cleanup klien
-    trove:Add(deps.Net:RemoteEvent("FishingMinigameStop"):Connect(function(isSuccess)
-        FishingStopped(isSuccess)
-    end))
-
-    return {
-        Start = StartAutoFishing,
-        Stop = FishingStopped,
-        Cleanup = function()
-            trove:Clean()
-            chargeTrove:Clean()
-            minigameTrove:Clean()
-        end
-    }
-end
-
--- Fishing System Controller
-local fishingSystem = nil
-
-local function InitializeFishingSystem()
-    if fishingSystem then return fishingSystem end
-    
-    local success, result = pcall(function()
-        fishingSystem = CreateFishingSystem()
-        return fishingSystem
-    end)
-    
-    if success and fishingSystem then
-        Notify({Title = "Fishing System", Content = "Advanced fishing system initialized", Duration = 3})
-        return fishingSystem
-    else
-        Notify({Title = "Fishing System Error", Content = "Failed to initialize fishing system: " .. tostring(result), Duration = 4})
-        return nil
-    end
-end
-
-local function StartFishingSystem()
-    if fishingSystemEnabled then return end
-    
-    local system = InitializeFishingSystem()
-    if not system then return end
-    
-    fishingSystemEnabled = true
-    
-    fishingSystemLoop = task.spawn(function()
-        while fishingSystemEnabled do
-            pcall(function()
-                system.Start(chargeDelay)
-                -- Wait for fishing cycle to complete
-                task.wait(6) -- Adjust based on fishing cycle timing
-            end)
-            task.wait(0.5) -- Small delay between cycles
-        end
-    end)
-    
-    Notify({Title = "Fishing System", Content = "Advanced fishing system activated", Duration = 3})
-end
-
-local function StopFishingSystem()
-    if not fishingSystemEnabled then return end
-    fishingSystemEnabled = false
-    
-    if fishingSystemLoop then
-        task.cancel(fishingSystemLoop)
-        fishingSystemLoop = nil
-    end
-    
-    if fishingSystem then
-        pcall(function() fishingSystem.Stop(false) end)
-        pcall(function() fishingSystem.Cleanup() end)
-    end
-    
-    Notify({Title = "Fishing System", Content = "Advanced fishing system deactivated", Duration = 3})
 end
 
 -- Auto Fishing System
@@ -1109,7 +709,7 @@ end
 -- Main Window Creation
 local Window = Rayfield:CreateWindow({
     Name = "Anggazyy Hub - Fish It",
-    Icon = 6034684454, -- Fish icon
+    Icon = "fish",
     LoadingTitle = "Anggazyy Hub",
     LoadingSubtitle = "Premium Automation System",
     Theme = "Dark",
@@ -1128,13 +728,6 @@ local InfoTab = Window:CreateTab("Information", "info")
 InfoTab:CreateParagraph({
     Title = "Anggazyy Hub - Fish It",
     Content = "Premium fishing automation with performance optimization"
-})
-
-InfoTab:CreateSection("System Features")
-
-InfoTab:CreateParagraph({
-    Title = "Features Included:",
-    Content = "• Advanced Auto Fishing\n• Fishing System (Charge + Minigame)\n• Fishing Radar Bypass\n• Diving Gear Bypass\n• Auto Sell System\n• Ultra Anti Lag\n• Position Management\n• Teleportation System"
 })
 
 -- ========== AUTO SYSTEM TAB ==========
@@ -1161,65 +754,6 @@ AutoTab:CreateToggle({
             StopAutoFish()
         end
     end
-})
-
-AutoTab:CreateSection("Basic Auto Fishing")
-
-AutoTab:CreateParagraph({
-    Title = "Basic System",
-    Content = "Simple auto fishing using server remote functions"
-})
-
--- ========== FISHING SYSTEM TAB ==========
-local FishingSystemTab = Window:CreateTab("Fishing System", "anchor")
-
-FishingSystemTab:CreateParagraph({
-    Title = "Advanced Fishing System",
-    Content = "Complete fishing automation with charge, throw, and minigame"
-})
-
-FishingSystemTab:CreateToggle({
-    Name = "Enable Fishing System",
-    CurrentValue = false,
-    Flag = "FishingSystemToggle",
-    Callback = function(state)
-        if state then
-            StartFishingSystem()
-        else
-            StopFishingSystem()
-        end
-    end
-})
-
-FishingSystemTab:CreateSlider({
-    Name = "Charge Delay",
-    Range = {0.1, 2.0},
-    Increment = 0.1,
-    CurrentValue = 0.5,
-    Suffix = "seconds",
-    Flag = "ChargeDelay",
-    Callback = function(value)
-        chargeDelay = value
-        Notify({
-            Title = "Charge Delay", 
-            Content = string.format("Charge delay set to %.1f seconds", value),
-            Duration = 2
-        })
-    end
-})
-
-FishingSystemTab:CreateButton({
-    Name = "Initialize Fishing System",
-    Callback = function()
-        InitializeFishingSystem()
-    end
-})
-
-FishingSystemTab:CreateSection("System Info")
-
-FishingSystemTab:CreateParagraph({
-    Title = "System Features",
-    Content = "• Auto Charge (0.5s)\n• Auto Throw\n• Auto Minigame Click\n• Server Communication\n• Animation Control\n• Sound Management\n• UI Control"
 })
 
 -- ========== BYPASS TAB ==========
@@ -1475,7 +1009,6 @@ SettingsTab:CreateButton({
     Name = "Unload Hub",
     Callback = function()
         StopAutoFish()
-        StopFishingSystem()
         StopLockPosition()
         DisableAntiLag()
         StopFishingRadar()
@@ -1505,15 +1038,9 @@ SettingsTab:CreateButton({
     end
 })
 
-SettingsTab:CreateSection("Configuration")
-SettingsTab:CreateParagraph({
-    Title = "Hub Configuration",
-    Content = "All settings are automatically saved and loaded"
-})
-
 -- Enhanced Visual Effects
 pcall(function()
-    local mainBG = Window.MainFrame and Window.MainFrame.Background
+    local mainBG = Window.UIElements and Window.UIElements.MainFrame and Window.UIElements.MainFrame.Background
     if mainBG then
         task.spawn(function()
             local colors = {
@@ -1538,7 +1065,7 @@ Rayfield:LoadConfiguration()
 -- Initial Notification
 Notify({
     Title = "Anggazyy Hub Ready", 
-    Content = "System initialized successfully - Press K to toggle UI",
+    Content = "System initialized successfully",
     Duration = 4
 })
 
