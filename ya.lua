@@ -1066,7 +1066,8 @@ local MainTab = Window:CreateTab({
 	ShowTitle = true
 })
 
-MainTab:CreateSection("Auto Fishing System")
+-- Create section first, then add elements
+local AutoFishSection = MainTab:CreateSection("Auto Fishing System")
 
 MainTab:CreateParagraph({
 	Title = "Auto Fishing Status",
@@ -1094,7 +1095,8 @@ local WeatherTab = Window:CreateTab({
 	ShowTitle = true
 })
 
-WeatherTab:CreateSection("Weather Machine")
+-- Create sections for Weather Tab
+local WeatherSection = WeatherTab:CreateSection("Weather Machine")
 
 WeatherTab:CreateParagraph({
 	Title = "Weather Machine",
@@ -1163,7 +1165,8 @@ local BypassTab = Window:CreateTab({
 	ShowTitle = true
 })
 
-BypassTab:CreateSection("Fishing Radar")
+-- Fishing Radar Section
+local FishingRadarSection = BypassTab:CreateSection("Fishing Radar")
 
 local FishingRadarToggle = BypassTab:CreateToggle({
 	Name = "Fishing Radar",
@@ -1184,7 +1187,8 @@ BypassTab:CreateButton({
 	Callback = SafeToggleRadar
 }, "ToggleRadarButton")
 
-BypassTab:CreateSection("Diving Gear")
+-- Diving Gear Section
+local DivingGearSection = BypassTab:CreateSection("Diving Gear")
 
 local DivingGearToggle = BypassTab:CreateToggle({
 	Name = "Diving Gear",
@@ -1205,7 +1209,8 @@ BypassTab:CreateButton({
 	Callback = SafeToggleDivingGear
 }, "ToggleDivingGearButton")
 
-BypassTab:CreateSection("Auto Sell Fish")
+-- Auto Sell Section
+local AutoSellSection = BypassTab:CreateSection("Auto Sell Fish")
 
 local AutoSellToggle = BypassTab:CreateToggle({
 	Name = "Auto Sell Fish",
@@ -1237,7 +1242,8 @@ BypassTab:CreateButton({
 	Callback = ManualSellAllFish
 }, "SellAllButton")
 
-BypassTab:CreateSection("🎃 Trick or Treat")
+-- Trick or Treat Section
+local TrickTreatSection = BypassTab:CreateSection("🎃 Trick or Treat")
 
 local TrickTreatToggle = BypassTab:CreateToggle({
 	Name = "Auto Trick or Treat",
@@ -1263,7 +1269,8 @@ BypassTab:CreateParagraph({
 	Text = "Automatically knocks on all Trick or Treat doors\n🎃 = Trick | 🍬 = Treat (Candy Corns)"
 })
 
-BypassTab:CreateSection("Quick Actions")
+-- Quick Actions Section
+local QuickActionsSection = BypassTab:CreateSection("Quick Actions")
 
 BypassTab:CreateButton({
 	Name = "Enable All Bypass",
@@ -1311,7 +1318,8 @@ local PlayerTab = Window:CreateTab({
 	ShowTitle = true
 })
 
-PlayerTab:CreateSection("Performance")
+-- Performance Section
+local PerformanceSection = PlayerTab:CreateSection("Performance")
 
 local AntiLagToggle = PlayerTab:CreateToggle({
 	Name = "Ultra Anti Lag",
@@ -1326,7 +1334,8 @@ local AntiLagToggle = PlayerTab:CreateToggle({
 	end
 }, "AntiLagToggle")
 
-PlayerTab:CreateSection("Position Management")
+-- Position Management Section
+local PositionSection = PlayerTab:CreateSection("Position Management")
 
 PlayerTab:CreateButton({
 	Name = "Save Position",
@@ -1353,7 +1362,8 @@ local LockPositionToggle = PlayerTab:CreateToggle({
 	end
 }, "LockPositionToggle")
 
-PlayerTab:CreateSection("Movement")
+-- Movement Section
+local MovementSection = PlayerTab:CreateSection("Movement")
 
 local WalkSpeedSlider = PlayerTab:CreateSlider({
 	Name = "Walk Speed",
@@ -1398,7 +1408,8 @@ PlayerTab:CreateButton({
 	end
 }, "ResetMovementButton")
 
-PlayerTab:CreateSection("Teleportation")
+-- Teleportation Section
+local TeleportationSection = PlayerTab:CreateSection("Teleportation")
 
 local MapDropdown = PlayerTab:CreateDropdown({
 	Name = "Select Destination",
@@ -1451,7 +1462,8 @@ local SettingsTab = Window:CreateTab({
 -- Build Theme Section
 SettingsTab:BuildThemeSection()
 
-SettingsTab:CreateSection("UI Settings")
+-- UI Settings Section
+local UISettingsSection = SettingsTab:CreateSection("UI Settings")
 
 local MinimizeBind = SettingsTab:CreateBind({
 	Name = "Minimize Keybind",
@@ -1466,7 +1478,8 @@ local MinimizeBind = SettingsTab:CreateBind({
 	end
 }, "MinimizeBind")
 
-SettingsTab:CreateSection("Hub Controls")
+-- Hub Controls Section
+local HubControlsSection = SettingsTab:CreateSection("Hub Controls")
 
 SettingsTab:CreateButton({
 	Name = "Unload Hub",
