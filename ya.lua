@@ -1,6 +1,6 @@
 --//////////////////////////////////////////////////////////////////////////////////
--- Anggazyy Hub - Fish It (FINAL)
--- Luna UI + Material icons
+-- Anggazyy Hub - Fish It (FINAL) + Weather Machine + Trick or Treat
+-- Luna UI Library
 -- Clean, modern, professional design
 -- Author: Anggazyy (refactor)
 --//////////////////////////////////////////////////////////////////////////////////
@@ -8,6 +8,7 @@
 -- CONFIG: ubah sesuai kebutuhan
 local AUTO_FISH_REMOTE_NAME = "UpdateAutoFishingState"
 local NET_PACKAGES_FOLDER = "Packages"
+local LUNA_URL = 'https://raw.nebulasoftworks.xyz/luna'
 
 -- Services & Variables
 local Players = game:GetService("Players")
@@ -40,10 +41,19 @@ local autoSellEnabled = false
 local autoSellThreshold = 3
 local autoSellLoop = nil
 
--- Fishing System Variables
-local fishingSystemEnabled = false
-local fishingSystemLoop = nil
-local chargeDelay = 0.5
+-- Weather System Variables
+local selectedWeathers = {}
+local availableWeathers = {}
+
+-- Trick or Treat Variables
+local autoTrickTreatEnabled = false
+local trickTreatLoop = nil
+
+-- UI Configuration
+local COLOR_ENABLED = Color3.fromRGB(76, 175, 80)  -- Green
+local COLOR_DISABLED = Color3.fromRGB(244, 67, 54) -- Red
+local COLOR_PRIMARY = Color3.fromRGB(103, 58, 183) -- Purple
+local COLOR_SECONDARY = Color3.fromRGB(30, 30, 46)  -- Dark
 
 -- Auto-clean money icons
 task.spawn(function()
@@ -66,65 +76,21 @@ task.spawn(function()
     end
 end)
 
--- Luna UI Loader
+-- Luna Loader
 local successLoad, Luna = pcall(function()
-    return loadstring(game:HttpGet("https://raw.githubusercontent.com/Nebula-Softworks/Luna-Interface-Suite/refs/heads/master/source.lua", true))()
+    return loadstring(game:HttpGet(LUNA_URL))()
 end)
 if not successLoad or not Luna then
-    warn("Luna UI loading failed. Please check your executor configuration.")
+    warn("Luna loading failed. Please check your executor configuration.")
     return
 end
-
--- Create Luna Window
-local Window = Luna:CreateWindow({
-    Name = "Anggazyy Hub - Fish It",
-    Subtitle = "Premium Automation System",
-    LogoID = "6034684454",
-    LoadingEnabled = true,
-    LoadingTitle = "Anggazyy Hub",
-    LoadingSubtitle = "Loading Premium Features...",
-    
-    ConfigSettings = {
-        RootFolder = nil,
-        ConfigFolder = "AnggazyyHubConfig"
-    },
-    
-    KeySystem = false, -- Disable key system for now
-    KeySettings = {
-        Title = "Anggazyy Hub Access",
-        Subtitle = "Enter Key",
-        Note = "Contact developer for access key",
-        SaveInRoot = false,
-        SaveKey = false,
-        Key = {"1234"},
-        SecondAction = {
-            Enabled = false,
-            Type = "Link",
-            Parameter = ""
-        }
-    }
-})
-
--- Create Home Tab
-Window:CreateHomeTab({
-    SupportedExecutors = {
-        "Synapse X",
-        "Krnl", 
-        "ProtoSmasher",
-        "Fluxus",
-        "Script-Ware",
-        "Electron"
-    },
-    DiscordInvite = "",
-    Icon = 1
-})
 
 -- Notification System
 local function Notify(opts)
     pcall(function()
         Luna:Notification({
             Title = opts.Title or "Notification",
-            Icon = opts.Icon or "info",
+            Icon = "notifications",
             ImageSource = "Material",
             Content = opts.Content or ""
         })
@@ -172,399 +138,266 @@ local function SafeInvokeAutoFishing(state)
     end)
 end
 
--- =================================================================
--- ADVANCED FISHING SYSTEM - TAB FISHING IMPLEMENTATION
--- =================================================================
+-- =============================================================================
+-- WEATHER MACHINE SYSTEM
+-- =============================================================================
 
--- Fishing System Dependencies
-local function GetFishingDependencies()
-    local dependencies = {}
-    
-    pcall(function()
-        -- Get required modules
-        dependencies.RunService = RunService
-        dependencies.UserInputService = game:GetService("UserInputService")
-        dependencies.ReplicatedStorage = ReplicatedStorage
-        dependencies.Players = Players
-        dependencies.LocalPlayer = LocalPlayer
-        
-        -- Import packages
-        dependencies.Signal = require(ReplicatedStorage.Packages.Signal)
-        dependencies.Trove = require(ReplicatedStorage.Packages.Trove)
-        dependencies.Net = require(ReplicatedStorage.Packages.Net)
-        dependencies.spr = require(ReplicatedStorage.Packages.spr)
-        dependencies.Constants = require(ReplicatedStorage.Shared.Constants)
-        dependencies.Soundbook = require(ReplicatedStorage.Shared.Soundbook)
-        dependencies.GuiControl = require(ReplicatedStorage.Modules.GuiControl)
-        dependencies.HUDController = require(ReplicatedStorage.Controllers.HUDController)
-        dependencies.AnimationController = require(ReplicatedStorage.Controllers.AnimationController)
-        dependencies.TextNotificationController = require(ReplicatedStorage.Controllers.TextNotificationController)
-        dependencies.BlockedHumanoidStates = require(ReplicatedStorage.Shared.BlockedHumanoidStates)
-        
-        -- Get UI elements
-        local PlayerGui = LocalPlayer.PlayerGui
-        dependencies.Charge_upvr = PlayerGui:WaitForChild("Charge")
-        dependencies.Fishing_upvr = PlayerGui:WaitForChild("Fishing")
-        dependencies.Main_upvr = dependencies.Fishing_upvr.Main
-        dependencies.CanvasGroup_upvr = dependencies.Main_upvr.Display.CanvasGroup
-    end)
-    
-    return dependencies
-end
-
--- Fishing System Implementation
-local function CreateFishingSystem()
-    local deps = GetFishingDependencies()
-    if not deps.Net then 
-        warn("Fishing System: Net module not found")
-        return nil 
-    end
-    
-    -- Variabel status internal
-    local var17_upvw = { Data = { EquippedId = 123 } } -- SIMULASI: Harus diinisialisasi agar rod check lulus
-    local var32_upvw = false 
-    local var34_upvw = false -- Is Stopped/Closing
-    local var35_upvw = nil -- Charge Start Time
-    local var36_upvw = nil -- Minigame UUID
-    local var37_upvw = nil -- Minigame State / Data (Progress, ClickPower)
-    local var38_upvw = 0 -- Cooldown Time
-    local var40_upvw = nil -- Reel Sound Track
-    local var109_upvw = false -- Is Charging flag
-
-    -- Trove untuk pembersihan koneksi
-    local trove = deps.Trove.new()
-    local chargeTrove = deps.Trove.new()
-    local minigameTrove = deps.Trove.new()
-
-    -- Signal untuk Minigame Changes
-    local MinigameChangedSignal = deps.Signal.new()
-
-    -- Fungsi placeholder
-    local function RefreshIdle() 
-        print("Simulasi: Menghentikan animasi memancing.") 
-    end
-    
-    local function FishingRodEquipped(id) 
-        return id ~= nil 
-    end
-    
-    local function GetItemDataFromEquippedItem(id) 
-        if not id then return nil end
-        return { Data = { Type = "Fishing Rods", Name = "FishingRodSound" } }
-    end
-
-    -- =================================================================
-    -- FUNGSI KOMUNIKASI SERVER
-    -- =================================================================
-
-    -- Net Function: Digunakan untuk melempar joran
-    local CastFishingRod_Net = deps.Net:RemoteFunction("RequestFishingMinigameStarted") 
-    -- Net Event: Dari Server ke Klien, menandakan ikan menggigit
-    local FishingMinigameStarted_Net = deps.Net:RemoteEvent("FishingMinigameStarted")
-    -- Net Event: Dari Klien ke Server, menandakan Minigame selesai
-    local FishingCompleted_Net = deps.Net:RemoteEvent("FishingCompleted")
-    -- Net Function: Untuk memulai proses charge (opsional)
-    local ChargeFishingRod_Net = deps.Net:RemoteFunction("ChargeFishingRod")
-
-    -- =================================================================
-    -- FUNGSI OTOMATISASI: Auto Clicker
-    -- =================================================================
-
-    local AutoClickerConnection = nil
-
-    local function FishingMinigameClick()
-        if not var36_upvw or not var37_upvw then return end
-        local currentTime = workspace:GetServerTimeNow()
-        if currentTime - var37_upvw.LastInput < 0.1 then return end
-        local clamped = math.clamp(var37_upvw.Progress + var37_upvw.FishingClickPower, 0, 1)
-        var37_upvw.LastInput = currentTime
-        var37_upvw.Progress = clamped
-        var37_upvw.Inputs = (var37_upvw.Inputs or 0) + 1
-        MinigameChangedSignal:Fire(var37_upvw)
-        if clamped >= 1 then
-            minigameTrove:Clean()
-            FishingCompleted_Net:FireServer()
-            print("[Auto Click] Minigame Selesai. Notifikasi server dikirim.")
-        end
-        return true
-    end
-
-    local function StartAutoMinigameClicker()
-        if AutoClickerConnection then 
-            AutoClickerConnection:Disconnect()
-            AutoClickerConnection = nil
-        end
-        print("[Auto Clicker] Diaktifkan! Memulai spam klik.")
-        AutoClickerConnection = deps.RunService.Heartbeat:Connect(FishingMinigameClick)
-        minigameTrove:Add(AutoClickerConnection)
-    end
-
-    local function StopAutoMinigameClicker()
-        if AutoClickerConnection then
-            AutoClickerConnection:Disconnect()
-            AutoClickerConnection = nil
-            minigameTrove:Clean()
-            print("[Auto Clicker] Dihentikan.")
-        end
-    end
-
-    -- =================================================================
-    -- FUNGSI INTI: Minigame Started (Dipanggil oleh Server Event)
-    -- =================================================================
-
-    local function FishingRodStarted(data)
-        if var36_upvw then return end
-        print("[Server Event] Ikan Menggigit! Memulai Minigame...")
-        deps.AnimationController:PlayAnimation("ReelIntermission") -- Animasi
-        
-        var36_upvw = data.UUID
-        var37_upvw = data
-        
-        local reelSound = deps.Soundbook.Sounds.Reel:Play() -- Sound
-        var40_upvw = reelSound
-        reelSound.Volume = 0
-        deps.spr.target(reelSound, 5, 10, { Volume = deps.Soundbook.Sounds.Reel.Volume })
-        minigameTrove:Add(function() deps.spr.stop(reelSound); reelSound:Stop(); reelSound:Destroy() end)
-        
-        deps.spr.stop(deps.Fishing_upvr.Main) -- UI
-        deps.spr.target(deps.Fishing_upvr.Main, 50, 250, { Position = UDim2.fromScale(0.5, 0.95) })
-        deps.GuiControl:SetHUDVisibility(false)
-        deps.Fishing_upvr.Enabled = true
-
-        StartAutoMinigameClicker()
-    end
-
-    -- =================================================================
-    -- FUNGSI INTI: Fishing Stopped
-    -- =================================================================
-
-    local function FishingStopped(isSuccessful)
-        if var34_upvw then return end
-        var34_upvw = true
-        local isCatch = isSuccessful or (var37_upvw and var37_upvw.Progress >= 1)
-        StopAutoMinigameClicker()
-
-        if not isCatch then
-            deps.AnimationController:PlayAnimation("FishingFailure")
-        else
-            RefreshIdle()
-        end
-        
-        deps.HUDController.ResetCamera()
-        
-        deps.spr.stop(deps.Fishing_upvr.Main)
-        deps.spr.target(deps.Fishing_upvr.Main, 50, 100, { Position = UDim2.fromScale(0.5, 1.5) })
-        task.wait(0.45)
-        
-        chargeTrove:Clean()
-        minigameTrove:Clean()
-        deps.GuiControl:SetHUDVisibility(true)
-        var38_upvw = workspace:GetServerTimeNow()
-        
-        var34_upvw = false
-        var37_upvw = nil
-        var36_upvw = nil
-        
-        print("[Auto Fishing] Berhasil dibersihkan. Siap untuk proses berikutnya.")
-    end
-
-    -- =================================================================
-    -- FUNGSI INTI: Permintaan Lemparan
-    -- =================================================================
-
-    local function SendFishingRequestToServer(power)
-        local character = deps.LocalPlayer.Character
-        if not character or not character:FindFirstChild("HumanoidRootPart") then
-            return false
-        end
-        
-        local throwPosition = character.HumanoidRootPart.CFrame.Position + Vector3.new(0, -1, 10)
-        local castTime = workspace:GetServerTimeNow()
-        
-        local success, responseData = pcall(function()
-            return CastFishingRod_Net:InvokeServer(
-                throwPosition.Y,
-                power,
-                castTime
-            )
-        end)
-
-        if success then
-            print("[Server Response] Lemparan joran berhasil. Menunggu ikan menggigit...")
-            return true
-        else
-            deps.TextNotificationController:DeliverNotification({
-                Type = "Text", Text = "Gagal melempar: " .. tostring(responseData),
-                TextColor = { R = 255, G = 0, B = 0 }, CustomDuration = 3.5
-            })
-            return false
-        end
-    end
-
-    -- =================================================================
-    -- FUNGSI PENGONTROL OTOMATIS (DO THROW DIPERBAIKI)
-    -- =================================================================
-
-    local function internal_DoThrow(chargePower, clientRequestDestroy)
-        -- Lakukan Animasi Lempar
-        deps.AnimationController:DestroyActiveAnimationTracks()
-        deps.AnimationController:PlayAnimation("RodThrow")
-        
-        -- Lakukan Suara Lemparan
-        local itemData = GetItemDataFromEquippedItem(var17_upvw and var17_upvw.Data.EquippedId)
-        local sound = deps.Soundbook.Sounds.ThrowCast
-        if itemData and deps.Soundbook.Sounds[itemData.Data.Name] then
-            sound = deps.Soundbook.Sounds[itemData.Data.Name]
-        end
-        sound:Play().Volume = 0.5 + math.random() * 0.75
-
-        -- Kirim permintaan Lempar
-        local didServerAccept = SendFishingRequestToServer(chargePower)
-        
-        -- Jika server menolak lemparan, bersihkan
-        if not didServerAccept then
-            task.wait(0.1)
-            FishingStopped(false) 
-            if clientRequestDestroy then clientRequestDestroy() end
-        end
-        -- Jika diterima, Klien tetap diam dan menunggu FishingMinigameStarted_Net
-    end
-
-    local function StartAutoFishing(chargeDelaySeconds)
-        chargeDelaySeconds = chargeDelaySeconds or 0.5
-        
-        if var109_upvw or var34_upvw then
-            warn("Auto Fishing sudah berjalan atau sedang berhenti.")
-            return
-        end
-
-        -- 1. Check Awal (Cooldown & Equipped)
-        if workspace:GetServerTimeNow() - var38_upvw < deps.Constants.FishingCooldownTime then
-            deps.TextNotificationController:DeliverNotification({ Type = "Text", Text = "Memancing masih Cooldown!", TextColor = { R = 255, G = 0, B = 0 }, CustomDuration = 2 })
-            return
-        end
-        local rodData = GetItemDataFromEquippedItem(var17_upvw and var17_upvw.Data.EquippedId)
-        if not rodData or rodData.Data.Type ~= "Fishing Rods" then
-            deps.TextNotificationController:DeliverNotification({ Type = "Text", Text = "Tidak ada joran terpasang!", TextColor = { R = 255, G = 255, B = 0 }, CustomDuration = 2 })
-            return
-        end
-        
-        -- 2. Memulai Charge
-        var109_upvw = true
-        deps.AnimationController:StopAnimation("EquipIdle")
-        deps.AnimationController:PlayAnimation("StartRodCharge")
-        print(string.format("[Auto Charge] Dimulai. Menunggu %.2f detik...", chargeDelaySeconds))
-        
-        var35_upvw = workspace:GetServerTimeNow()
-        pcall(function()
-            ChargeFishingRod_Net:InvokeServer(nil, nil, nil, var35_upvw)
-        end)
-        
-        -- Tambahkan fungsi cleanup charge ke trove
-        chargeTrove:Add(function()
-            var109_upvw = false
-            deps.AnimationController:StopAnimation("StartRodCharge")
-            deps.AnimationController:StopAnimation("LoopedRodCharge")
-            RefreshIdle()
-        end)
-        
-        -- 3. Melempar setelah delay selesai
-        task.delay(chargeDelaySeconds, function()
-            -- Jika sudah dihentikan oleh proses lain (misal user input), jangan lempar
-            if not var109_upvw then return
-
-            local throwPower = deps.Constants:GetPower(var35_upvw)
-            
-            -- ** PENTING: Lakukan cleanup charge SEBELUM memanggil DoThrow, ini sesuai flow game. **
-            chargeTrove:Clean() 
-
-            -- Panggil fungsi lempar
-            internal_DoThrow(throwPower, function() FishingStopped(false) end) 
-        end)
-    end
-
-    -- =================================================================
-    -- SERVER EVENT LISTENERS
-    -- =================================================================
-
-    -- Menghubungkan Minigame Started Event dari Server ke FishingRodStarted
-    trove:Add(FishingMinigameStarted_Net:Connect(function(data)
-        FishingRodStarted(data)
-    end))
-
-    -- Menghubungkan Minigame Selesai dari Server ke proses cleanup klien
-    trove:Add(deps.Net:RemoteEvent("FishingMinigameStop"):Connect(function(isSuccess)
-        FishingStopped(isSuccess)
-    end))
-
-    return {
-        Start = StartAutoFishing,
-        Stop = FishingStopped,
-        Cleanup = function()
-            trove:Clean()
-            chargeTrove:Clean()
-            minigameTrove:Clean()
-        end
-    }
-end
-
--- Fishing System Controller
-local fishingSystem = nil
-
-local function InitializeFishingSystem()
-    if fishingSystem then return fishingSystem end
-    
+local function LoadWeatherData()
     local success, result = pcall(function()
-        fishingSystem = CreateFishingSystem()
-        return fishingSystem
+        local EventUtility = require(ReplicatedStorage.Shared.EventUtility)
+        local StringLibrary = require(ReplicatedStorage.Shared.StringLibrary)
+        local Events = require(ReplicatedStorage.Events)
+        
+        local weatherList = {}
+        
+        for name, data in pairs(Events) do
+            local event = EventUtility:GetEvent(name)
+            if event and event.WeatherMachine and event.WeatherMachinePrice then
+                table.insert(weatherList, {
+                    Name = event.Name or name,
+                    InternalName = name,
+                    Price = event.WeatherMachinePrice,
+                    DisplayName = string.format("%s - %s Coins", event.Name or name, StringLibrary:AddCommas(event.WeatherMachinePrice))
+                })
+            end
+        end
+        
+        table.sort(weatherList, function(a, b)
+            return a.Price < b.Price
+        end)
+        
+        return weatherList
     end)
     
-    if success and fishingSystem then
-        Notify({Title = "Fishing System", Content = "Advanced fishing system initialized", Duration = 3})
-        return fishingSystem
+    if success then
+        return result
     else
-        Notify({Title = "Fishing System Error", Content = "Failed to initialize fishing system: " .. tostring(result), Duration = 4})
+        warn("⚠️ Failed to load weather data:", result)
+        return {}
+    end
+end
+
+local function PurchaseWeather(weatherName)
+    local success, result = pcall(function()
+        local Net = require(ReplicatedStorage.Packages.Net)
+        local PurchaseWeatherEvent = Net:RemoteFunction("PurchaseWeatherEvent")
+        local purchaseResult = PurchaseWeatherEvent:InvokeServer(weatherName)
+        return purchaseResult
+    end)
+    
+    return success, result
+end
+
+local function BuySelectedWeathers()
+    if not next(selectedWeathers) then
+        Notify({
+            Title = "Weather Purchase",
+            Content = "No weathers selected!",
+        })
+        return
+    end
+    
+    local totalPurchases = 0
+    local successfulPurchases = 0
+    
+    Notify({
+        Title = "Weather Purchase",
+        Content = "Processing purchases...",
+    })
+    
+    for weatherName, selected in pairs(selectedWeathers) do
+        if selected then
+            totalPurchases = totalPurchases + 1
+            
+            local weatherData
+            for _, weather in ipairs(availableWeathers) do
+                if weather.InternalName == weatherName then
+                    weatherData = weather
+                    break
+                end
+            end
+            
+            if weatherData then
+                local success, result = PurchaseWeather(weatherName)
+                if success and result then
+                    successfulPurchases = successfulPurchases + 1
+                    Notify({
+                        Title = "✅ Purchase Successful",
+                        Content = string.format("Bought: %s", weatherData.Name),
+                    })
+                else
+                    Notify({
+                        Title = "❌ Purchase Failed",
+                        Content = string.format("Failed to buy: %s", weatherData.Name),
+                    })
+                end
+            end
+            
+            task.wait(0.5)
+        end
+    end
+    
+    selectedWeathers = {}
+    
+    Notify({
+        Title = "Purchase Complete",
+        Content = string.format("Successfully purchased %d/%d weathers", successfulPurchases, totalPurchases),
+    })
+end
+
+local function RefreshWeatherList()
+    availableWeathers = LoadWeatherData()
+    local weatherOptions = {}
+    for _, weather in ipairs(availableWeathers) do
+        table.insert(weatherOptions, weather.DisplayName)
+    end
+    return weatherOptions, availableWeathers
+end
+
+local function ToggleWeatherSelection(weatherIndex, state)
+    if availableWeathers[weatherIndex] then
+        local weather = availableWeathers[weatherIndex]
+        selectedWeathers[weather.InternalName] = state
+        
+        Notify({
+            Title = state and "✅ Weather Selected" or "❌ Weather Deselected",
+            Content = string.format("%s %s", weather.Name, state and "selected" or "deselected"),
+        })
+    end
+end
+
+-- =============================================================================
+-- TRICK OR TREAT SYSTEM
+-- =============================================================================
+
+local function GetSpecialDialogueRemote()
+    local success, result = pcall(function()
+        local Net = require(ReplicatedStorage.Packages.Net)
+        local SpecialDialogueEvent = Net:RemoteFunction("SpecialDialogueEvent")
+        return SpecialDialogueEvent
+    end)
+    
+    if success then
+        return result
+    else
+        warn("❌ Failed to load SpecialDialogueEvent:", result)
         return nil
     end
 end
 
-local function StartFishingSystem()
-    if fishingSystemEnabled then return end
+local function FindTrickOrTreatDoors()
+    local doors = {}
     
-    local system = InitializeFishingSystem()
-    if not system then return end
-    
-    fishingSystemEnabled = true
-    
-    fishingSystemLoop = task.spawn(function()
-        while fishingSystemEnabled do
-            pcall(function()
-                system.Start(chargeDelay)
-                -- Wait for fishing cycle to complete
-                task.wait(6) -- Adjust based on fishing cycle timing
-            end)
-            task.wait(0.5) -- Small delay between cycles
+    for _, door in pairs(workspace:GetDescendants()) do
+        if door:IsA("Model") and door:FindFirstChild("Root") and door:FindFirstChild("Door") and door.Name then
+            if door:GetAttribute("TrickOrTreatDoor") or string.find(door.Name, "House") then
+                table.insert(doors, door)
+            end
         end
-    end)
+    end
     
-    Notify({Title = "Fishing System", Content = "Advanced fishing system activated", Duration = 3})
+    return doors
 end
 
-local function StopFishingSystem()
-    if not fishingSystemEnabled then return end
-    fishingSystemEnabled = false
+local function KnockDoor(door)
+    local success, result = pcall(function()
+        local SpecialDialogueEvent = GetSpecialDialogueRemote()
+        if not SpecialDialogueEvent then
+            return false, "Remote not found"
+        end
+        
+        local success, reward = SpecialDialogueEvent:InvokeServer(door.Name, "TrickOrTreatHouse")
+        return success, reward
+    end)
     
-    if fishingSystemLoop then
-        task.cancel(fishingSystemLoop)
-        fishingSystemLoop = nil
+    return success, result
+end
+
+local function StartAutoTrickTreat()
+    if autoTrickTreatEnabled then return end
+    autoTrickTreatEnabled = true
+    
+    Notify({
+        Title = "🎃 Auto Trick or Treat",
+        Content = "System activated - Knocking all doors...",
+    })
+    
+    trickTreatLoop = task.spawn(function()
+        while autoTrickTreatEnabled do
+            local doors = FindTrickOrTreatDoors()
+            
+            if #doors > 0 then
+                Notify({
+                    Title = "🎃 Trick or Treat",
+                    Content = string.format("Found %d doors, knocking...", #doors),
+                })
+                
+                for _, door in ipairs(doors) do
+                    if not autoTrickTreatEnabled then break end
+                    
+                    local success, result = KnockDoor(door)
+                    if success then
+                        if result == "Trick" then
+                            print("[🎃] Trick dari " .. door.Name)
+                        elseif result == "Treat" then
+                            print("[🍬] Treat dari " .. door.Name)
+                        end
+                    end
+                    
+                    task.wait(0.5)
+                end
+            end
+            
+            task.wait(10)
+        end
+    end)
+end
+
+local function StopAutoTrickTreat()
+    if not autoTrickTreatEnabled then return end
+    autoTrickTreatEnabled = false
+    
+    if trickTreatLoop then
+        task.cancel(trickTreatLoop)
+        trickTreatLoop = nil
     end
     
-    if fishingSystem then
-        pcall(function() fishingSystem.Stop(false) end)
-        pcall(function() fishingSystem.Cleanup() end)
+    Notify({
+        Title = "🎃 Auto Trick or Treat",
+        Content = "System deactivated",
+    })
+end
+
+local function ManualKnockAllDoors()
+    local doors = FindTrickOrTreatDoors()
+    
+    if #doors == 0 then
+        Notify({
+            Title = "🎃 Trick or Treat",
+            Content = "No Trick or Treat doors found!",
+        })
+        return
     end
     
-    Notify({Title = "Fishing System", Content = "Advanced fishing system deactivated", Duration = 3})
+    Notify({
+        Title = "🎃 Manual Knock",
+        Content = string.format("Knocking %d doors...", #doors),
+    })
+    
+    local successfulKnocks = 0
+    
+    for _, door in ipairs(doors) do
+        local success, result = KnockDoor(door)
+        if success then
+            successfulKnocks = successfulKnocks + 1
+        end
+        task.wait(0.5)
+    end
+    
+    Notify({
+        Title = "🎃 Knock Complete",
+        Content = string.format("Success: %d/%d doors", successfulKnocks, #doors),
+    })
 end
 
 -- Auto Fishing System
@@ -573,10 +406,10 @@ local function StartAutoFish()
     autoFishEnabled = true
     if statusLabel then 
         pcall(function() 
-            statusLabel:SetText("Status: ACTIVE")
+            statusLabel:Set({Text = "Status: ACTIVE ✅"})
         end) 
     end
-    Notify({Title = "Auto Fishing", Content = "System activated successfully", Duration = 2})
+    Notify({Title = "Auto Fishing", Content = "System activated successfully"})
 
     autoFishLoopThread = task.spawn(function()
         while autoFishEnabled do
@@ -593,10 +426,10 @@ local function StopAutoFish()
     autoFishEnabled = false
     if statusLabel then 
         pcall(function() 
-            statusLabel:SetText("Status: DISABLED")
+            statusLabel:Set({Text = "Status: DISABLED ❌"})
         end) 
     end
-    Notify({Title = "Auto Fishing", Content = "System deactivated", Duration = 2})
+    Notify({Title = "Auto Fishing", Content = "System deactivated"})
     
     pcall(function()
         SafeInvokeAutoFishing(false)
@@ -604,10 +437,9 @@ local function StopAutoFish()
 end
 
 -- =============================================================================
--- ULTRA ANTI LAG SYSTEM - WHITE TEXTURE MODE
+-- ULTRA ANTI LAG SYSTEM
 -- =============================================================================
 
--- Save original graphics settings
 local function SaveOriginalGraphics()
     originalGraphicsSettings = {
         GraphicsQualityLevel = UserGameSettings.GraphicsQualityLevel,
@@ -621,32 +453,27 @@ local function SaveOriginalGraphics()
     }
 end
 
--- Ultra Anti Lag System - White Texture Mode
 local function EnableAntiLag()
     if antiLagEnabled then return end
     
     SaveOriginalGraphics()
     antiLagEnabled = true
     
-    -- Extreme graphics optimization with white textures
     pcall(function()
-        -- Graphics quality settings
         UserGameSettings.GraphicsQualityLevel = 1
         UserGameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
         
-        -- Lighting optimization - Bright white environment
         Lighting.GlobalShadows = false
         Lighting.FogEnd = 999999
-        Lighting.Brightness = 5  -- Extra bright
+        Lighting.Brightness = 5
         Lighting.ShadowSoftness = 0
         Lighting.EnvironmentDiffuseScale = 1
         Lighting.EnvironmentSpecularScale = 0
-        Lighting.OutdoorAmbient = Color3.new(1, 1, 1)  -- Pure white ambient
-        Lighting.Ambient = Color3.new(1, 1, 1)  -- Pure white
+        Lighting.OutdoorAmbient = Color3.new(1, 1, 1)
+        Lighting.Ambient = Color3.new(1, 1, 1)
         Lighting.ColorShift_Bottom = Color3.new(1, 1, 1)
         Lighting.ColorShift_Top = Color3.new(1, 1, 1)
         
-        -- Terrain optimization - White terrain
         if workspace.Terrain then
             workspace.Terrain.Decoration = false
             workspace.Terrain.WaterReflectance = 0
@@ -655,10 +482,8 @@ local function EnableAntiLag()
             workspace.Terrain.WaterWaveSpeed = 0
         end
         
-        -- Make all parts white and disable effects
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Part") or obj:IsA("MeshPart") or obj:IsA("UnionOperation") then
-                -- Set all parts to white
                 if obj:FindFirstChildOfClass("Texture") then
                     obj:FindFirstChildOfClass("Texture"):Destroy()
                 end
@@ -668,35 +493,21 @@ local function EnableAntiLag()
                 obj.Material = Enum.Material.SmoothPlastic
                 obj.BrickColor = BrickColor.new("White")
                 obj.Reflectance = 0
-            elseif obj:IsA("ParticleEmitter") then
+            elseif obj:IsA("ParticleEmitter") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") or obj:IsA("Beam") or obj:IsA("Trail") then
                 obj.Enabled = false
-            elseif obj:IsA("Fire") then
-                obj.Enabled = false
-            elseif obj:IsA("Smoke") then
-                obj.Enabled = false
-            elseif obj:IsA("Sparkles") then
-                obj.Enabled = false
-            elseif obj:IsA("Beam") then
-                obj.Enabled = false
-            elseif obj:IsA("Trail") then
-                obj.Enabled = false
-            elseif obj:IsA("Sound") and not obj:FindFirstAncestorWhichIsA("Player") then
-                obj:Stop()
             end
         end
         
-        -- Reduce texture quality to minimum
         settings().Rendering.QualityLevel = 1
     end)
     
-    Notify({Title = "Ultra Anti Lag", Content = "White texture mode enabled - Maximum performance", Duration = 3})
+    Notify({Title = "Ultra Anti Lag", Content = "White texture mode enabled - Maximum performance"})
 end
 
 local function DisableAntiLag()
     if not antiLagEnabled then return end
     antiLagEnabled = false
     
-    -- Restore original graphics settings
     pcall(function()
         if originalGraphicsSettings.GraphicsQualityLevel then
             UserGameSettings.GraphicsQualityLevel = originalGraphicsSettings.GraphicsQualityLevel
@@ -707,42 +518,20 @@ local function DisableAntiLag()
         if originalGraphicsSettings.MasterVolume ~= nil then
             Lighting.GlobalShadows = originalGraphicsSettings.MasterVolume
         end
-        if originalGraphicsSettings.Brightness then
-            Lighting.Brightness = originalGraphicsSettings.Brightness
-        end
-        if originalGraphicsSettings.FogEnd then
-            Lighting.FogEnd = originalGraphicsSettings.FogEnd
-        end
-        if originalGraphicsSettings.ShadowSoftness then
-            Lighting.ShadowSoftness = originalGraphicsSettings.ShadowSoftness
-        end
-        if originalGraphicsSettings.EnvironmentDiffuseScale then
-            Lighting.EnvironmentDiffuseScale = originalGraphicsSettings.EnvironmentDiffuseScale
-        end
-        if originalGraphicsSettings.EnvironmentSpecularScale then
-            Lighting.EnvironmentSpecularScale = originalGraphicsSettings.EnvironmentSpecularScale
-        end
         
-        -- Restore terrain
         if workspace.Terrain then
             workspace.Terrain.Decoration = true
             workspace.Terrain.WaterReflectance = 0.5
             workspace.Terrain.WaterTransparency = 0.5
-            workspace.Terrain.WaterWaveSize = 0.5
-            workspace.Terrain.WaterWaveSpeed = 10
         end
         
-        -- Restore lighting
         Lighting.OutdoorAmbient = Color3.new(0.5, 0.5, 0.5)
         Lighting.Ambient = Color3.new(0.5, 0.5, 0.5)
-        Lighting.ColorShift_Bottom = Color3.new(0, 0, 0)
-        Lighting.ColorShift_Top = Color3.new(0, 0, 0)
         
-        -- Restore texture quality
         settings().Rendering.QualityLevel = 10
     end)
     
-    Notify({Title = "Anti Lag", Content = "Graphics settings restored", Duration = 3})
+    Notify({Title = "Anti Lag", Content = "Graphics settings restored"})
 end
 
 -- Position Management System
@@ -752,8 +541,7 @@ local function SaveCurrentPosition()
         lastSavedPosition = character.HumanoidRootPart.Position
         Notify({
             Title = "Position Saved", 
-            Content = string.format("Position saved successfully"),
-            Duration = 2
+            Content = "Position saved successfully",
         })
         return true
     end
@@ -762,14 +550,14 @@ end
 
 local function LoadSavedPosition()
     if not lastSavedPosition then
-        Notify({Title = "Load Failed", Content = "No position saved", Duration = 2})
+        Notify({Title = "Load Failed", Content = "No position saved"})
         return false
     end
     
     local character = LocalPlayer.Character
     if character and character:FindFirstChild("HumanoidRootPart") then
         character.HumanoidRootPart.CFrame = CFrame.new(lastSavedPosition)
-        Notify({Title = "Position Loaded", Content = "Teleported to saved position", Duration = 2})
+        Notify({Title = "Position Loaded", Content = "Teleported to saved position"})
         return true
     end
     return false
@@ -798,7 +586,7 @@ local function StartLockPosition()
         end
     end)
     
-    Notify({Title = "Position Lock", Content = "Player position locked", Duration = 2})
+    Notify({Title = "Position Lock", Content = "Player position locked"})
 end
 
 local function StopLockPosition()
@@ -810,32 +598,27 @@ local function StopLockPosition()
         lockPositionLoop = nil
     end
     
-    Notify({Title = "Position Lock", Content = "Player position unlocked", Duration = 2})
+    Notify({Title = "Position Lock", Content = "Player position unlocked"})
 end
 
 -- =============================================================================
--- BYPASS SYSTEM - FISHING RADAR, DIVING GEAR & AUTO SELL
+-- BYPASS SYSTEM
 -- =============================================================================
 
--- Fishing Radar System
 local function ToggleFishingRadar()
     local success, result = pcall(function()
-        -- Load required modules
         local Replion = require(ReplicatedStorage.Packages.Replion)
         local Net = require(ReplicatedStorage.Packages.Net)
         local UpdateFishingRadar = Net:RemoteFunction("UpdateFishingRadar")
         
-        -- Get player data
         local Data = Replion.Client:WaitReplion("Data")
         if not Data then
             return false, "Data Replion tidak ditemukan!"
         end
 
-        -- Get current radar state
         local currentState = Data:Get("RegionsVisible")
         local desiredState = not currentState
 
-        -- Invoke server to update radar
         local invokeSuccess = UpdateFishingRadar:InvokeServer(desiredState)
         
         if invokeSuccess then
@@ -859,9 +642,9 @@ local function StartFishingRadar()
     local success, message = ToggleFishingRadar()
     if success then
         fishingRadarEnabled = true
-        Notify({Title = "Fishing Radar", Content = message, Duration = 3})
+        Notify({Title = "Fishing Radar", Content = message})
     else
-        Notify({Title = "Radar Error", Content = message, Duration = 4})
+        Notify({Title = "Radar Error", Content = message})
     end
 end
 
@@ -871,42 +654,35 @@ local function StopFishingRadar()
     local success, message = ToggleFishingRadar()
     if success then
         fishingRadarEnabled = false
-        Notify({Title = "Fishing Radar", Content = message, Duration = 3})
+        Notify({Title = "Fishing Radar", Content = message})
     else
-        Notify({Title = "Radar Error", Content = message, Duration = 4})
+        Notify({Title = "Radar Error", Content = message})
     end
 end
 
--- Diving Gear System
 local function ToggleDivingGear()
     local success, result = pcall(function()
-        -- Load required modules
         local Net = require(ReplicatedStorage.Packages.Net)
         local Replion = require(ReplicatedStorage.Packages.Replion)
         local ItemUtility = require(ReplicatedStorage.Shared.ItemUtility)
         
-        -- Get diving gear data
         local DivingGear = ItemUtility.GetItemDataFromItemType("Gears", "Diving Gear")
         if not DivingGear then
             return false, "Diving Gear tidak ditemukan!"
         end
 
-        -- Get player data
         local Data = Replion.Client:WaitReplion("Data")
         if not Data then
             return false, "Data Replion tidak ditemukan!"
         end
 
-        -- Get remote functions
         local UnequipOxygenTank = Net:RemoteFunction("UnequipOxygenTank")
         local EquipOxygenTank = Net:RemoteFunction("EquipOxygenTank")
 
-        -- Check current equipment state
         local EquippedId = Data:Get("EquippedOxygenTankId")
         local isEquipped = EquippedId == DivingGear.Data.Id
         local success
 
-        -- Toggle equipment
         if isEquipped then
             success = UnequipOxygenTank:InvokeServer()
         else
@@ -934,9 +710,9 @@ local function StartDivingGear()
     local success, message = ToggleDivingGear()
     if success then
         divingGearEnabled = true
-        Notify({Title = "Diving Gear", Content = message, Duration = 3})
+        Notify({Title = "Diving Gear", Content = message})
     else
-        Notify({Title = "Diving Gear Error", Content = message, Duration = 4})
+        Notify({Title = "Diving Gear Error", Content = message})
     end
 end
 
@@ -946,52 +722,27 @@ local function StopDivingGear()
     local success, message = ToggleDivingGear()
     if success then
         divingGearEnabled = false
-        Notify({Title = "Diving Gear", Content = message, Duration = 3})
+        Notify({Title = "Diving Gear", Content = message})
     else
-        Notify({Title = "Diving Gear Error", Content = message, Duration = 4})
+        Notify({Title = "Diving Gear Error", Content = message})
     end
 end
 
--- =============================================================================
--- FIXED AUTO SELL SYSTEM - BYPASS CONFIRMATION PROMPT
--- =============================================================================
-
--- Auto Sell System - Fixed version without confirmation
 local function ManualSellAllFish()
     local success, result = pcall(function()
-        -- Load required modules
-        local Net = require(ReplicatedStorage.Packages.Net)
-        local Replion = require(ReplicatedStorage.Packages.Replion)
         local VendorController = require(ReplicatedStorage.Controllers.VendorController)
-        
-        -- Get player data
-        local Data = Replion.Client:WaitReplion("Data")
-        if not Data then
-            return false, "Player data not found"
-        end
-
-        -- Check if player has Sell Anywhere gamepass
-        local hasGamepass = true -- Assume player has gamepass to bypass check
-        
-        if hasGamepass then
-            -- Direct sell without confirmation
-            if VendorController and VendorController.SellAllItems then
-                VendorController:SellAllItems()
-                return true, "All fish sold successfully!"
-            else
-                return false, "VendorController not found"
-            end
+        if VendorController and VendorController.SellAllItems then
+            VendorController:SellAllItems()
+            return true, "All fish sold successfully!"
         else
-            return false, "Sell Anywhere gamepass required"
+            return false, "VendorController not found"
         end
     end)
     
     if success then
-        Notify({Title = "Manual Sell", Content = result, Duration = 3})
-        return true
+        Notify({Title = "Manual Sell", Content = result})
     else
-        Notify({Title = "Sell Error", Content = result, Duration = 4})
-        return false
+        Notify({Title = "Sell Error", Content = result})
     end
 end
 
@@ -1003,9 +754,8 @@ local function StartAutoSell()
         while autoSellEnabled do
             pcall(function()
                 local Replion = require(ReplicatedStorage.Packages.Replion)
-                local Net = require(ReplicatedStorage.Packages.Net)
-                local VendorController = require(ReplicatedStorage.Controllers.VendorController)
                 local Data = Replion.Client:WaitReplion("Data")
+                local VendorController = require(ReplicatedStorage.Controllers.VendorController)
                 
                 if Data and VendorController and VendorController.SellAllItems then
                     local inventory = Data:Get("Inventory")
@@ -1016,25 +766,22 @@ local function StartAutoSell()
                         end
                         
                         if fishCount >= autoSellThreshold then
-                            -- Bypass gamepass check and sell directly
                             VendorController:SellAllItems()
                             Notify({
                                 Title = "Auto Sell", 
                                 Content = string.format("Sold %d fish automatically", fishCount),
-                                Duration = 2
                             })
                         end
                     end
                 end
             end)
-            task.wait(2) -- Check every 2 seconds
+            task.wait(2)
         end
     end)
     
     Notify({
         Title = "Auto Sell Started", 
         Content = string.format("Auto selling when fish count >= %d", autoSellThreshold),
-        Duration = 3
     })
 end
 
@@ -1047,7 +794,7 @@ local function StopAutoSell()
         autoSellLoop = nil
     end
     
-    Notify({Title = "Auto Sell", Content = "Auto sell stopped", Duration = 2})
+    Notify({Title = "Auto Sell", Content = "Auto sell stopped"})
 end
 
 local function SetAutoSellThreshold(amount)
@@ -1056,31 +803,10 @@ local function SetAutoSellThreshold(amount)
         Notify({
             Title = "Auto Sell Threshold", 
             Content = string.format("Threshold set to %d fish", amount),
-            Duration = 3
         })
         return true
     end
     return false
-end
-
--- Auto Radar Toggle with safety
-local function SafeToggleRadar()
-    local success, message = ToggleFishingRadar()
-    if success then
-        Notify({Title = "Fishing Radar", Content = message, Duration = 3})
-    else
-        Notify({Title = "Radar Error", Content = message, Duration = 4})
-    end
-end
-
--- Auto Diving Gear Toggle with safety
-local function SafeToggleDivingGear()
-    local success, message = ToggleDivingGear()
-    if success then
-        Notify({Title = "Diving Gear", Content = message, Duration = 3})
-    else
-        Notify({Title = "Diving Gear Error", Content = message, Duration = 4})
-    end
 end
 
 -- Coordinate Display System
@@ -1095,7 +821,7 @@ local function CreateCoordinateDisplay()
     local frame = Instance.new("Frame", sg)
     frame.Size = UDim2.new(0, 220, 0, 40)
     frame.Position = UDim2.new(0.5, -110, 0, 15)
-    frame.BackgroundColor3 = Color3.fromRGB(30, 30, 46)
+    frame.BackgroundColor3 = COLOR_SECONDARY
     frame.BackgroundTransparency = 0.1
     frame.BorderSizePixel = 0
     
@@ -1103,7 +829,7 @@ local function CreateCoordinateDisplay()
     corner.CornerRadius = UDim.new(0.3, 0)
     
     local stroke = Instance.new("UIStroke", frame)
-    stroke.Color = Color3.fromRGB(103, 58, 183)
+    stroke.Color = COLOR_PRIMARY
     stroke.Thickness = 1.6
 
     local label = Instance.new("TextLabel", frame)
@@ -1140,53 +866,124 @@ local function DestroyCoordinateDisplay()
 end
 
 -- =============================================================================
--- CREATE ALL TABS WITH LUNA UI
+-- MAIN WINDOW CREATION (LUNA UI)
 -- =============================================================================
 
--- ========== INFORMATION TAB ==========
-local InfoTab = Window:CreateTab({
-    Name = "Information",
-    Icon = "info",
-    ImageSource = "Material",
-    ShowTitle = true
+local Window = Luna:CreateWindow({
+    Name = "Anggazyy Hub - Fish It",
+    Subtitle = "Premium Automation",
+    LogoID = "82795327169782",
+    LoadingEnabled = true,
+    LoadingTitle = "Anggazyy Hub",
+    LoadingSubtitle = "by Anggazyy",
+    
+    ConfigSettings = {
+        RootFolder = nil,
+        ConfigFolder = "AnggazyyHub_FishIt"
+    },
+    
+    KeySystem = false,
+    KeySettings = {
+        Title = "Anggazyy Hub Key",
+        Subtitle = "Key System",
+        Note = "Enter your key to access Anggazyy Hub",
+        SaveKey = true,
+        Key = {"AnggazyyHub2024"}
+    }
 })
 
-InfoTab:CreateParagraph({
-    Title = "Anggazyy Hub - Fish It",
-    Text = "Premium fishing automation with performance optimization"
+-- =============================================================================
+-- TABS CREATION
+-- =============================================================================
+
+local Tabs = {
+    Home = Window:CreateTab({
+        Name = "Home",
+        Icon = "home",
+        ImageSource = "Material",
+        ShowTitle = true
+    }),
+    Auto = Window:CreateTab({
+        Name = "Automation",
+        Icon = "smart_toy",
+        ImageSource = "Material",
+        ShowTitle = true
+    }),
+    Weather = Window:CreateTab({
+        Name = "Weather Machine",
+        Icon = "cloud",
+        ImageSource = "Material",
+        ShowTitle = true
+    }),
+    Bypass = Window:CreateTab({
+        Name = "Bypass",
+        Icon = "security",
+        ImageSource = "Material",
+        ShowTitle = true
+    }),
+    Player = Window:CreateTab({
+        Name = "Player Config",
+        Icon = "person",
+        ImageSource = "Material",
+        ShowTitle = true
+    }),
+    Teleport = Window:CreateTab({
+        Name = "Teleportation",
+        Icon = "flight_takeoff",
+        ImageSource = "Material",
+        ShowTitle = true
+    }),
+    Settings = Window:CreateTab({
+        Name = "Settings",
+        Icon = "settings",
+        ImageSource = "Material",
+        ShowTitle = true
+    })
+}
+
+-- =============================================================================
+-- HOME TAB
+-- =============================================================================
+
+Tabs.Home:CreateParagraph({
+    Title = "🐟 Anggazyy Hub - Fish It",
+    Text = "Premium fishing automation system with advanced features including Auto Fishing, Weather Machine, Trick or Treat automation, and more. Built with Luna UI for the best user experience."
 })
 
-InfoTab:CreateSection("System Features")
+Tabs.Home:CreateDivider()
 
-InfoTab:CreateParagraph({
-    Title = "Features Included:",
-    Text = "• Advanced Auto Fishing\n• Fishing System (Charge + Minigame)\n• Fishing Radar Bypass\n• Diving Gear Bypass\n• Auto Sell System\n• Ultra Anti Lag\n• Position Management\n• Teleportation System"
+Tabs.Home:CreateLabel({
+    Text = "System Status",
+    Style = 2
 })
 
--- ========== AUTO SYSTEM TAB ==========
-local AutoTab = Window:CreateTab({
-    Name = "Automation", 
-    Icon = "settings",
-    ImageSource = "Material",
-    ShowTitle = true
+Tabs.Home:CreateParagraph({
+    Title = "📊 Current Features",
+    Text = "• Auto Fishing System\n• Weather Machine Purchase\n• Trick or Treat Automation\n• Fishing Radar Bypass\n• Diving Gear Toggle\n• Auto Sell Fish\n• Ultra Anti Lag\n• Position Management\n• Player Speed Control"
 })
 
-AutoTab:CreateParagraph({
-    Title = "Auto Fishing System",
-    Text = "Automated fishing with server communication"
+-- =============================================================================
+-- AUTOMATION TAB
+-- =============================================================================
+
+Tabs.Auto:CreateSection("Auto Fishing System")
+
+Tabs.Auto:CreateParagraph({
+    Title = "Auto Fishing",
+    Text = "Automated fishing with server communication. Enable the toggle below to start auto fishing."
 })
 
-statusLabel = AutoTab:CreateLabel({
-    Text = "Status: DISABLED",
+statusLabel = Tabs.Auto:CreateLabel({
+    Text = "Status: DISABLED ❌",
     Style = 1
 })
 
-AutoTab:CreateToggle({
+Tabs.Auto:CreateToggle({
     Name = "Enable Auto Fishing",
-    Description = nil,
+    Description = "Automatically catch fish without manual input",
     CurrentValue = false,
-    Callback = function(Value)
-        if Value then
+    Callback = function(state)
+        if state then
             StartAutoFish()
         else
             StopAutoFish()
@@ -1194,91 +991,92 @@ AutoTab:CreateToggle({
     end
 }, "AutoFishToggle")
 
-AutoTab:CreateSection("Basic Auto Fishing")
+Tabs.Auto:CreateDivider()
 
-AutoTab:CreateParagraph({
-    Title = "Basic System",
-    Text = "Simple auto fishing using server remote functions"
+Tabs.Auto:CreateLabel({
+    Text = "Auto fishing will run in the background",
+    Style = 2
 })
 
--- ========== FISHING SYSTEM TAB ==========
-local FishingSystemTab = Window:CreateTab({
-    Name = "Fishing System",
-    Icon = "anchor", 
-    ImageSource = "Material",
-    ShowTitle = true
+-- =============================================================================
+-- WEATHER MACHINE TAB
+-- =============================================================================
+
+Tabs.Weather:CreateSection("Weather Machine Purchase")
+
+Tabs.Weather:CreateParagraph({
+    Title = "Weather System",
+    Text = "Purchase and activate different weather events. Select multiple weathers using toggles and buy them all at once."
 })
 
-FishingSystemTab:CreateParagraph({
-    Title = "Advanced Fishing System",
-    Text = "Complete fishing automation with charge, throw, and minigame"
-})
+-- Load weather data
+availableWeathers = LoadWeatherData()
 
-FishingSystemTab:CreateToggle({
-    Name = "Enable Fishing System",
-    Description = nil,
-    CurrentValue = false,
-    Callback = function(Value)
-        if Value then
-            StartFishingSystem()
-        else
-            StopFishingSystem()
+local weatherOptions = {}
+for _, weather in ipairs(availableWeathers) do
+    table.insert(weatherOptions, weather.DisplayName)
+end
+
+-- Weather Selection Section
+Tabs.Weather:CreateSection("Available Weathers")
+
+-- Create toggles for each weather
+for index, weather in ipairs(availableWeathers) do
+    Tabs.Weather:CreateToggle({
+        Name = weather.DisplayName,
+        Description = string.format("Price: %d Coins", weather.Price),
+        CurrentValue = false,
+        Callback = function(state)
+            ToggleWeatherSelection(index, state)
         end
-    end
-}, "FishingSystemToggle")
+    }, "Weather_" .. weather.InternalName)
+end
 
-FishingSystemTab:CreateSlider({
-    Name = "Charge Delay",
-    Range = {0.1, 2.0},
-    Increment = 0.1,
-    CurrentValue = 0.5,
-    Callback = function(Value)
-        chargeDelay = Value
+Tabs.Weather:CreateDivider()
+
+-- Purchase Buttons
+Tabs.Weather:CreateButton({
+    Name = "💰 Buy Selected Weathers",
+    Description = "Purchase all selected weather events",
+    Callback = BuySelectedWeathers
+})
+
+Tabs.Weather:CreateButton({
+    Name = "🔄 Refresh Weather List",
+    Description = "Reload available weather events",
+    Callback = function()
         Notify({
-            Title = "Charge Delay", 
-            Content = string.format("Charge delay set to %.1f seconds", Value),
-            Duration = 2
+            Title = "Refreshing...",
+            Content = "Reloading weather list"
+        })
+        task.wait(1)
+        Notify({
+            Title = "Weather List Updated",
+            Content = "Please reload the script to see new weathers"
         })
     end
-}, "ChargeDelay")
-
-FishingSystemTab:CreateButton({
-    Name = "Initialize Fishing System",
-    Description = nil,
-    Callback = function()
-        InitializeFishingSystem()
-    end
 })
 
-FishingSystemTab:CreateSection("System Info")
+Tabs.Weather:CreateDivider()
 
-FishingSystemTab:CreateParagraph({
-    Title = "System Features",
-    Text = "• Auto Charge (0.5s)\n• Auto Throw\n• Auto Minigame Click\n• Server Communication\n• Animation Control\n• Sound Management\n• UI Control"
+Tabs.Weather:CreateParagraph({
+    Title = "📝 Instructions",
+    Text = "1. Select weathers using toggles above\n2. Click 'Buy Selected Weathers' to purchase\n3. Multiple selections are allowed\n4. Weather will activate automatically after purchase"
 })
 
--- ========== BYPASS TAB ==========
-local BypassTab = Window:CreateTab({
-    Name = "Bypass",
-    Icon = "radar",
-    ImageSource = "Material", 
-    ShowTitle = true
-})
-
-BypassTab:CreateParagraph({
-    Title = "Game Bypass Features",
-    Text = "Advanced features to enhance gameplay"
-})
+-- =============================================================================
+-- BYPASS TAB
+-- =============================================================================
 
 -- Fishing Radar Section
-BypassTab:CreateSection("Fishing Radar")
+Tabs.Bypass:CreateSection("🎯 Fishing Radar")
 
-BypassTab:CreateToggle({
+Tabs.Bypass:CreateToggle({
     Name = "Fishing Radar",
-    Description = nil,
+    Description = "Shows fish locations on the map",
     CurrentValue = false,
-    Callback = function(Value)
-        if Value then
+    Callback = function(state)
+        if state then
             StartFishingRadar()
         else
             StopFishingRadar()
@@ -1286,21 +1084,28 @@ BypassTab:CreateToggle({
     end
 }, "FishingRadarToggle")
 
-BypassTab:CreateButton({
-    Name = "Toggle Radar",
-    Description = nil,
-    Callback = SafeToggleRadar
+Tabs.Bypass:CreateButton({
+    Name = "Toggle Radar Manually",
+    Description = "Quick toggle for fishing radar",
+    Callback = function()
+        local success, message = ToggleFishingRadar()
+        if success then
+            Notify({Title = "Fishing Radar", Content = message})
+        else
+            Notify({Title = "Radar Error", Content = message})
+        end
+    end
 })
 
 -- Diving Gear Section
-BypassTab:CreateSection("Diving Gear")
+Tabs.Bypass:CreateSection("🤿 Diving Gear")
 
-BypassTab:CreateToggle({
+Tabs.Bypass:CreateToggle({
     Name = "Diving Gear",
-    Description = nil,
+    Description = "Automatically equip diving gear for underwater fishing",
     CurrentValue = false,
-    Callback = function(Value)
-        if Value then
+    Callback = function(state)
+        if state then
             StartDivingGear()
         else
             StopDivingGear()
@@ -1308,21 +1113,28 @@ BypassTab:CreateToggle({
     end
 }, "DivingGearToggle")
 
-BypassTab:CreateButton({
-    Name = "Toggle Diving Gear",
-    Description = nil,
-    Callback = SafeToggleDivingGear
+Tabs.Bypass:CreateButton({
+    Name = "Toggle Diving Gear Manually",
+    Description = "Quick toggle for diving equipment",
+    Callback = function()
+        local success, message = ToggleDivingGear()
+        if success then
+            Notify({Title = "Diving Gear", Content = message})
+        else
+            Notify({Title = "Diving Gear Error", Content = message})
+        end
+    end
 })
 
 -- Auto Sell Section
-BypassTab:CreateSection("Auto Sell Fish")
+Tabs.Bypass:CreateSection("💰 Auto Sell Fish")
 
-BypassTab:CreateToggle({
+Tabs.Bypass:CreateToggle({
     Name = "Auto Sell Fish",
-    Description = nil,
+    Description = "Automatically sell fish when threshold is reached",
     CurrentValue = false,
-    Callback = function(Value)
-        if Value then
+    Callback = function(state)
+        if state then
             StartAutoSell()
         else
             StopAutoSell()
@@ -1330,64 +1142,89 @@ BypassTab:CreateToggle({
     end
 }, "AutoSellToggle")
 
-BypassTab:CreateSlider({
+Tabs.Bypass:CreateSlider({
     Name = "Sell Threshold",
     Range = {1, 50},
     Increment = 1,
     CurrentValue = 3,
-    Callback = function(Value)
-        SetAutoSellThreshold(Value)
+    Callback = function(value)
+        SetAutoSellThreshold(value)
     end
 }, "AutoSellThreshold")
 
-BypassTab:CreateButton({
+Tabs.Bypass:CreateButton({
     Name = "Sell All Fish Now",
-    Description = nil,
+    Description = "Manually sell all fish in inventory",
     Callback = ManualSellAllFish
 })
 
--- Quick Actions Section
-BypassTab:CreateSection("Quick Actions")
+-- Trick or Treat Section
+Tabs.Bypass:CreateSection("🎃 Trick or Treat")
 
-BypassTab:CreateButton({
-    Name = "Enable All Bypass",
-    Description = nil,
+Tabs.Bypass:CreateToggle({
+    Name = "Auto Trick or Treat",
+    Description = "Automatically knock on all Halloween doors",
+    CurrentValue = false,
+    Callback = function(state)
+        if state then
+            StartAutoTrickTreat()
+        else
+            StopAutoTrickTreat()
+        end
+    end
+}, "AutoTrickTreatToggle")
+
+Tabs.Bypass:CreateButton({
+    Name = "Knock All Doors Now",
+    Description = "Manually knock on all Trick or Treat doors",
+    Callback = ManualKnockAllDoors
+})
+
+Tabs.Bypass:CreateParagraph({
+    Title = "🎃 Trick or Treat Info",
+    Text = "Automatically knocks on all Trick or Treat doors to collect candy corns. Works during Halloween events.\n\n🎃 = Trick | 🍬 = Treat (Candy Corns)"
+})
+
+-- Quick Actions Section
+Tabs.Bypass:CreateSection("⚡ Quick Actions")
+
+Tabs.Bypass:CreateButton({
+    Name = "Enable All Bypass Features",
+    Description = "Activate all bypass features at once",
     Callback = function()
         StartFishingRadar()
         StartDivingGear()
         StartAutoSell()
-        Notify({Title = "Bypass", Content = "All bypass features enabled", Duration = 3})
+        StartAutoTrickTreat()
+        Notify({Title = "Bypass", Content = "All bypass features enabled"})
     end
 })
 
-BypassTab:CreateButton({
-    Name = "Disable All Bypass",
-    Description = nil,
+Tabs.Bypass:CreateButton({
+    Name = "Disable All Bypass Features",
+    Description = "Deactivate all bypass features at once",
     Callback = function()
         StopFishingRadar()
         StopDivingGear()
         StopAutoSell()
-        Notify({Title = "Bypass", Content = "All bypass features disabled", Duration = 3})
+        StopAutoTrickTreat()
+        Notify({Title = "Bypass", Content = "All bypass features disabled"})
     end
 })
 
--- ========== PLAYER CONFIGURATION TAB ==========
-local PlayerConfigTab = Window:CreateTab({
-    Name = "Player Config",
-    Icon = "person",
-    ImageSource = "Material",
-    ShowTitle = true
-})
+-- =============================================================================
+-- PLAYER CONFIG TAB
+-- =============================================================================
 
 -- Performance Section
-PlayerConfigTab:CreateSection("Performance")
+Tabs.Player:CreateSection("⚡ Performance")
 
-PlayerConfigTab:CreateToggle({
+Tabs.Player:CreateToggle({
     Name = "Ultra Anti Lag",
-    Description = nil,
+    Description = "Enable white texture mode for maximum performance",
     CurrentValue = false,
-    Callback = function(Value)
-        if Value then
+    Callback = function(state)
+        if state then
             EnableAntiLag()
         else
             DisableAntiLag()
@@ -1395,27 +1232,32 @@ PlayerConfigTab:CreateToggle({
     end
 }, "AntiLagToggle")
 
--- Position Section
-PlayerConfigTab:CreateSection("Position")
+Tabs.Player:CreateLabel({
+    Text = "Warning: Ultra Anti Lag will make everything white",
+    Style = 3
+})
 
-PlayerConfigTab:CreateButton({
-    Name = "Save Position",
-    Description = nil,
+-- Position Management Section
+Tabs.Player:CreateSection("📍 Position Management")
+
+Tabs.Player:CreateButton({
+    Name = "Save Current Position",
+    Description = "Save your current location",
     Callback = SaveCurrentPosition
 })
 
-PlayerConfigTab:CreateButton({
-    Name = "Load Position",
-    Description = nil, 
+Tabs.Player:CreateButton({
+    Name = "Load Saved Position",
+    Description = "Teleport to saved location",
     Callback = LoadSavedPosition
 })
 
-PlayerConfigTab:CreateToggle({
+Tabs.Player:CreateToggle({
     Name = "Lock Position",
-    Description = nil,
+    Description = "Prevent your character from moving",
     CurrentValue = false,
-    Callback = function(Value)
-        if Value then
+    Callback = function(state)
+        if state then
             StartLockPosition()
         else
             StopLockPosition()
@@ -1423,61 +1265,103 @@ PlayerConfigTab:CreateToggle({
     end
 }, "LockPositionToggle")
 
--- Quick Actions
-PlayerConfigTab:CreateSection("Quick Actions")
+-- Movement Section
+Tabs.Player:CreateSection("🏃 Movement")
 
-PlayerConfigTab:CreateButton({
-    Name = "Max Performance",
-    Description = nil,
-    Callback = function()
-        EnableAntiLag()
-        Notify({Title = "Performance", Content = "Maximum performance enabled", Duration = 2})
+Tabs.Player:CreateSlider({
+    Name = "Walk Speed",
+    Range = {16, 200},
+    Increment = 1,
+    CurrentValue = 16,
+    Callback = function(val)
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed = val
+        end
     end
-})
+}, "WalkSpeed")
 
--- ========== TELEPORTATION TAB ==========
-local TeleportTab = Window:CreateTab({
-    Name = "Teleportation",
-    Icon = "map",
-    ImageSource = "Material",
-    ShowTitle = true
-})
-
-TeleportTab:CreateParagraph({
-    Title = "Location Teleport",
-    Text = "Quick teleport to fishing spots"
-})
-
-TeleportTab:CreateDropdown({
-    Name = "Select Destination",
-    Description = nil,
-    Options = {"Mount Hallow"},
-    CurrentOption = {"Mount Hallow"},
-    MultipleOptions = false,
-    SpecialType = nil,
-    Callback = function(Options)
-        currentSelectedMap = Options[1]
+Tabs.Player:CreateSlider({
+    Name = "Jump Power",
+    Range = {50, 350},
+    Increment = 1,
+    CurrentValue = 50,
+    Callback = function(val)
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.JumpPower = val
+        end
     end
-}, "MapSelect")
+}, "JumpPower")
 
-TeleportTab:CreateButton({
-    Name = "Teleport Now",
-    Description = nil,
+Tabs.Player:CreateButton({
+    Name = "Reset Movement to Default",
+    Description = "Reset speed and jump to default values",
     Callback = function()
-        local pos = Vector3.new(1819, 12, 3043)
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(pos)
-            Notify({Title = "Teleport", Content = "Teleported to Mount Hallow", Duration = 2})
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed = 16
+            LocalPlayer.Character.Humanoid.JumpPower = 50
+            Notify({Title = "Reset", Content = "Movement reset to default"})
         end
     end
 })
 
-TeleportTab:CreateToggle({
+-- Quick Actions
+Tabs.Player:CreateSection("⚡ Quick Actions")
+
+Tabs.Player:CreateButton({
+    Name = "Maximum Performance Mode",
+    Description = "Enable all performance optimizations",
+    Callback = function()
+        EnableAntiLag()
+        Notify({Title = "Performance", Content = "Maximum performance enabled"})
+    end
+})
+
+-- =============================================================================
+-- TELEPORTATION TAB
+-- =============================================================================
+
+Tabs.Teleport:CreateSection("🗺️ Location Teleport")
+
+Tabs.Teleport:CreateParagraph({
+    Title = "Quick Travel",
+    Text = "Instantly teleport to popular fishing locations. Select a destination from the dropdown and click Teleport."
+})
+
+local selectedLocation = "Mount Hallow"
+
+Tabs.Teleport:CreateDropdown({
+    Name = "Select Destination",
+    Options = {"Mount Hallow", "Spawn"},
+    CurrentOption = "Mount Hallow",
+    MultipleOptions = false,
+    Callback = function(option)
+        selectedLocation = option
+    end
+}, "TeleportLocation")
+
+Tabs.Teleport:CreateButton({
+    Name = "🚀 Teleport Now",
+    Description = "Teleport to selected location",
+    Callback = function()
+        local pos = selectedLocation == "Mount Hallow" and Vector3.new(1819, 12, 3043) or Vector3.new(0, 10, 0)
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(pos)
+            Notify({Title = "Teleport", Content = "Teleported to " .. selectedLocation})
+        end
+    end
+})
+
+Tabs.Teleport:CreateDivider()
+
+-- Coordinate Display Section
+Tabs.Teleport:CreateSection("📊 Coordinates")
+
+Tabs.Teleport:CreateToggle({
     Name = "Show Coordinates",
-    Description = nil,
+    Description = "Display your current position on screen",
     CurrentValue = false,
-    Callback = function(Value)
-        if Value then
+    Callback = function(v)
+        if v then
             CreateCoordinateDisplay()
         else
             DestroyCoordinateDisplay()
@@ -1485,80 +1369,37 @@ TeleportTab:CreateToggle({
     end
 }, "ShowCoords")
 
--- ========== PLAYER MANAGEMENT TAB ==========
-local PlayerTab = Window:CreateTab({
-    Name = "Player Stats",
-    Icon = "speed",
-    ImageSource = "Material",
-    ShowTitle = true
+Tabs.Teleport:CreateLabel({
+    Text = "Coordinates will appear at the top of your screen",
+    Style = 2
 })
 
-PlayerTab:CreateSection("Movement")
+-- =============================================================================
+-- SETTINGS TAB
+-- =============================================================================
 
-PlayerTab:CreateSlider({
-    Name = "Walk Speed",
-    Range = {16, 200},
-    Increment = 1,
-    CurrentValue = 16,
-    Callback = function(Value)
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.WalkSpeed = Value
-        end
-    end
-}, "WalkSpeed")
+Tabs.Settings:CreateSection("⚙️ General Settings")
 
-PlayerTab:CreateSlider({
-    Name = "Jump Power",
-    Range = {50, 350},
-    Increment = 1,
-    CurrentValue = 50,
-    Callback = function(Value)
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.JumpPower = Value
-        end
-    end
-}, "JumpPower")
-
-PlayerTab:CreateButton({
-    Name = "Reset Movement",
-    Description = nil,
-    Callback = function()
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.WalkSpeed = 16
-            LocalPlayer.Character.Humanoid.JumpPower = 50
-            Notify({Title = "Reset", Content = "Movement reset to default", Duration = 2})
-        end
-    end
-})
-
--- ========== SETTINGS TAB ==========
-local SettingsTab = Window:CreateTab({
-    Name = "Settings",
-    Icon = "settings_applications",
-    ImageSource = "Material",
-    ShowTitle = true
-})
-
-SettingsTab:CreateButton({
-    Name = "Unload Hub",
-    Description = nil,
+Tabs.Settings:CreateButton({
+    Name = "🗑️ Unload Hub",
+    Description = "Safely unload the entire hub and stop all features",
     Callback = function()
         StopAutoFish()
-        StopFishingSystem()
         StopLockPosition()
         DisableAntiLag()
         StopFishingRadar()
         StopDivingGear()
         StopAutoSell()
+        StopAutoTrickTreat()
         DestroyCoordinateDisplay()
-        -- Luna doesn't have destroy method, we'll just notify
-        Notify({Title = "Unload", Content = "Hub functions stopped - Close UI manually", Duration = 3})
+        Luna:Destroy()
+        Notify({Title = "Unload", Content = "Hub unloaded successfully"})
     end
 })
 
-SettingsTab:CreateButton({
-    Name = "Clean UI",
-    Description = nil,
+Tabs.Settings:CreateButton({
+    Name = "🧹 Clean UI",
+    Description = "Remove money icons and clean the interface",
     Callback = function()
         for _, obj in ipairs(CoreGui:GetDescendants()) do
             pcall(function()
@@ -1571,44 +1412,39 @@ SettingsTab:CreateButton({
                 end
             end)
         end
-        Notify({Title = "Clean", Content = "UI cleaned", Duration = 2})
+        Notify({Title = "Clean", Content = "UI cleaned successfully"})
     end
 })
 
-SettingsTab:CreateSection("Configuration")
+Tabs.Settings:CreateDivider()
 
-SettingsTab:CreateParagraph({
-    Title = "Hub Configuration", 
-    Text = "All settings are automatically saved and loaded"
-})
+-- Config & Theme Sections
+Tabs.Settings:BuildConfigSection()
+Tabs.Settings:BuildThemeSection()
 
--- Create Theme Tab for Luna UI customization
-local ThemeTab = Window:CreateTab({
-    Name = "Theme",
-    Icon = "palette",
-    ImageSource = "Material",
-    ShowTitle = true
-})
-
-ThemeTab:BuildThemeSection()
-
--- Create Config Tab for Luna UI settings
-local ConfigTab = Window:CreateTab({
-    Name = "Config",
-    Icon = "save",
-    ImageSource = "Material", 
-    ShowTitle = true
-})
-
-ConfigTab:BuildConfigSection()
+-- =============================================================================
+-- INITIALIZATION
+-- =============================================================================
 
 -- Initial Notification
 Notify({
-    Title = "Anggazyy Hub Ready", 
-    Content = "System initialized successfully - All tabs loaded",
-    Duration = 4
+    Title = "🐟 Anggazyy Hub Ready", 
+    Content = "System initialized successfully. All features are ready to use!",
 })
 
---//////////////////////////////////////////////////////////////////////////////////
--- System Initialization Complete
---//////////////////////////////////////////////////////////////////////////////////
+-- Auto-start notification after 2 seconds
+task.wait(2)
+Luna:Notification({
+    Title = "Welcome!",
+    Icon = "waving_hand",
+    ImageSource = "Material",
+    Content = "Thank you for using Anggazyy Hub. Press K to toggle the menu. Enjoy fishing!"
+})
+
+print("=================================")
+print("Anggazyy Hub - Fish It Loaded")
+print("UI: Luna Library")
+print("Version: Final + Weather + ToT")
+print("=================================")
+
+-- End of Script
